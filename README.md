@@ -1,6 +1,6 @@
 # WattWise
 
-Home Energy Builder & Simulator สำหรับประกอบบ้านจำลองจากเครื่องใช้ไฟฟ้าและประเมินการใช้พลังงาน
+Home Energy Builder & Simulator สำหรับประกอบบ้านจำลองจากเครื่องใช้ไฟฟ้าและประมาณการใช้พลังงาน
 
 ## Current prototype
 
