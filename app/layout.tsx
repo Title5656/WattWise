@@ -1,5 +1,11 @@
 import type { Metadata } from 'next';
+import { Noto_Sans_Thai } from 'next/font/google';
 import './globals.css';
+
+const notoSansThai = Noto_Sans_Thai({
+  subsets: ['latin', 'thai'],
+  variable: '--font-noto-sans-thai',
+});
 
 export const metadata: Metadata = {
   title: 'WattWise — รู้ทันพลังงานในบ้าน',
@@ -23,5 +29,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="th"><body>{children}</body></html>;
+  return <html lang="th" className={notoSansThai.variable}><body>{children}</body></html>;
 }
