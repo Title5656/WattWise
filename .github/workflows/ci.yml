@@ -48,7 +48,7 @@ jobs:
           D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
         run: |
           test -n "$D1_DATABASE_ID"
-          jq --arg id "$D1_DATABASE_ID" '.d1_databases[0].database_id = $id' dist/server/wrangler.json > "$RUNNER_TEMP/wrangler.json"
+          jq --arg id "$D1_DATABASE_ID" '.name = "wattwise" | .d1_databases[0].database_id = $id' dist/server/wrangler.json > "$RUNNER_TEMP/wrangler.json"
           mv "$RUNNER_TEMP/wrangler.json" dist/server/wrangler.json
 
       - name: Deploy to Cloudflare Workers
