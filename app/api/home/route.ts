@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { applianceCatalog, hydrateHomeItem, type HomeAppliance } from '@/lib/home-config';
+import { applianceCatalog, calculateHomeSummary, hydrateHomeItem, type HomeAppliance } from '@/lib/home-config';
 
 const householdKey = 'default-home';
 const tableSql = `CREATE TABLE IF NOT EXISTS saved_home_appliances (
@@ -39,7 +39,8 @@ async function readItems() {
 
 export async function GET() {
   try {
-    return Response.json({ items: await readItems() });
+    const items = await readItems();
+    return Response.json({ items, summary: calculateHomeSummary(items) });
   } catch (error) {
     console.error('Unable to read home configuration', error);
     return Response.json({ error: 'ไม่สามารถโหลดข้อมูลบ้านได้' }, { status: 500 });
@@ -72,7 +73,8 @@ async function save(request: Request) {
       ).bind(householdKey, item.applianceKey, item.quantity, item.hoursPerDay, position, now)),
     ];
     await db.batch(statements);
-    return Response.json({ items: await readItems(), savedAt: now });
+    const savedItems = await readItems();
+    return Response.json({ items: savedItems, summary: calculateHomeSummary(savedItems), savedAt: now });
   } catch (error) {
     console.error('Unable to save home configuration', error);
     return Response.json({ error: 'ไม่สามารถบันทึกข้อมูลบ้านได้' }, { status: 500 });

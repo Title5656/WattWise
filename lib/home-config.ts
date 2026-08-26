@@ -1,3 +1,10 @@
+import {
+  calculateHouseholdEstimate,
+  type AverageRateTariff,
+  type EnergyCalculationResult,
+  type ElectricityBillResult,
+} from './energy.ts';
+
 export type Appliance = {
   id: string;
   category: string;
@@ -33,13 +40,50 @@ export const applianceCatalog: Appliance[] = [
 
 export const averageTariffPerKwh = 4.18;
 
-export function calculateHomeSummary(items: HomeAppliance[]) {
-  const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
-  const ratedLoadKw = items.reduce((sum, item) => sum + item.watts * item.quantity, 0) / 1000;
-  const dailyKwh = items.reduce((sum, item) => sum + item.watts * item.quantity * item.hoursPerDay, 0) / 1000;
-  const monthlyKwh = dailyKwh * 30;
-  const monthlyBill = monthlyKwh * averageTariffPerKwh;
-  return { totalUnits, ratedLoadKw, dailyKwh, monthlyKwh, monthlyBill };
+export const prototypeTariff: AverageRateTariff = {
+  mode: 'average_rate',
+  ratePerKwh: averageTariffPerKwh,
+  label: 'อัตราเฉลี่ยชั่วคราว 4.18 บาท/kWh',
+};
+
+export type HomeItemCalculation = {
+  instanceId: string;
+  calculation: EnergyCalculationResult;
+};
+
+export type HomeSummary = {
+  totalUnits: number;
+  ratedLoadKw: number;
+  dailyKwh: number;
+  monthlyKwh: number;
+  monthlyBill: number;
+  bill: ElectricityBillResult;
+  itemCalculations: HomeItemCalculation[];
+};
+
+export function calculateHomeSummary(items: HomeAppliance[]): HomeSummary {
+  const estimate = calculateHouseholdEstimate(items.map((item) => ({
+    key: item.instanceId,
+    method: 'watt_hours',
+    quantity: item.quantity,
+    ratedPowerW: item.watts,
+    hoursPerDay: item.hoursPerDay,
+    daysPerMonth: 30,
+    confidence: 'sample',
+  })), prototypeTariff);
+
+  return {
+    totalUnits: estimate.totalUnits,
+    ratedLoadKw: estimate.ratedLoadKw,
+    dailyKwh: estimate.dailyEnergyKwh,
+    monthlyKwh: estimate.monthlyEnergyKwh,
+    monthlyBill: estimate.bill.total,
+    bill: estimate.bill,
+    itemCalculations: estimate.itemCalculations.map((item) => ({
+      instanceId: item.key,
+      calculation: item.calculation,
+    })),
+  };
 }
 
 export function hydrateHomeItem(row: {

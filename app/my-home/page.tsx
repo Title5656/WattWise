@@ -61,6 +61,10 @@ export default function MyHomePage() {
   }), [category, query]);
 
   const summary = calculateHomeSummary(homeItems);
+  const itemEnergyById = new Map(summary.itemCalculations.map((item) => [
+    item.instanceId,
+    item.calculation.monthlyEnergyKwh,
+  ]));
 
   function addToHome(id: string) {
     const appliance = catalog.find((item) => item.id === id);
@@ -132,7 +136,7 @@ export default function MyHomePage() {
           >
             {homeItems.length === 0 ? <div className="builder-empty"><i>＋</i><h3>เริ่มสร้างบ้านพลังงานของคุณ</h3><p>ลากเครื่องใช้ไฟฟ้าจากรายการด้านซ้ายมาวาง<br />หรือกดเครื่องหมายบวกบนการ์ด</p><span>ข้อมูลจะคำนวณใหม่แบบทันที</span></div>
               : <div className="builder-home-list">{homeItems.map((item) => {
-                const kwh = (item.watts * item.quantity * item.hoursPerDay * 30) / 1000;
+                const kwh = itemEnergyById.get(item.instanceId) ?? 0;
                 return <article className="builder-home-item" key={item.instanceId}>
                   <div className="builder-home-image"><Image src={item.image} alt="" width={88} height={88} /></div>
                   <div className="builder-item-name"><span>{item.brand}</span><b>{item.name}</b><small>{item.model}</small></div>
@@ -143,7 +147,7 @@ export default function MyHomePage() {
                 </article>;
               })}</div>}
           </div>
-          <footer className="builder-method"><i>i</i><p><b>วิธีคำนวณเบื้องต้น</b><span>กำลังไฟ × จำนวน × ชั่วโมงใช้งาน × 30 วัน โดยใช้อัตราเฉลี่ยชั่วคราว 4.18 บาท/kWh</span></p></footer>
+          <footer className="builder-method"><i>i</i><p><b>คำนวณผ่าน WattWise Engine</b><span>ข้อมูลตัวอย่างชุดนี้ใช้วิธีกำลังไฟ × จำนวน × ชั่วโมง × 30 วัน และอัตราเฉลี่ยชั่วคราว 4.18 บาท/kWh</span></p></footer>
         </section>
       </section>
     </section>

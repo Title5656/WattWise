@@ -5,12 +5,21 @@ import { useState } from 'react';
 
 type ActivePage = 'status' | 'home' | 'profile' | 'settings';
 
-const links = [
+type SidebarLink = {
+  id: ActivePage;
+  label: string;
+  detail: string;
+  icon: string;
+  href: string;
+  badge?: string;
+};
+
+const links: readonly SidebarLink[] = [
   { id: 'status', label: 'Status', detail: 'ภาพรวมพลังงานทั้งหมด', icon: '◫', href: '/#overview', badge: 'LIVE' },
   { id: 'home', label: 'My Home', detail: 'จัดการเครื่องใช้ไฟฟ้าในบ้าน', icon: '⌂', href: '/my-home', badge: 'BUILD' },
   { id: 'profile', label: 'Profile', detail: 'แก้ไขข้อมูลและบัญชีผู้ใช้', icon: '◎', href: '/#profile' },
   { id: 'settings', label: 'Settings', detail: 'ตั้งค่าระบบและการแจ้งเตือน', icon: '⚙', href: '/#settings' },
-] as const;
+];
 
 export function WattWiseSidebar({ active }: { active: ActivePage }) {
   const [open, setOpen] = useState(false);
