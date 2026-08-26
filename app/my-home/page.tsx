@@ -8,6 +8,7 @@ import { WattWiseSidebar } from '../components/WattWiseSidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { debounce } from '@/lib/debounce';
 import { applianceCatalog as catalog, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
 
 const categories = ['ทั้งหมด', ...Array.from(new Set(catalog.map((item) => item.category)))];
@@ -46,17 +47,20 @@ export default function MyHomePage() {
   useEffect(() => {
     if (!ready) return;
     const sequence = ++saveSequence.current;
-    const snapshot = homeItems;
-    queueMicrotask(() => { if (sequence === saveSequence.current) setSaveState('saving'); });
-    saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
-      const response = await fetch('/api/home', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: snapshot }),
-      });
-      if (!response.ok) throw new Error('save failed');
-      if (sequence === saveSequence.current) setSaveState('saved');
-    }).catch(() => { if (sequence === saveSequence.current) setSaveState('error'); });
+    const scheduleSave = debounce((snapshot: HomeAppliance[]) => {
+      setSaveState('saving');
+      saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
+        const response = await fetch('/api/home', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: snapshot }),
+        });
+        if (!response.ok) throw new Error('save failed');
+        if (sequence === saveSequence.current) setSaveState('saved');
+      }).catch(() => { if (sequence === saveSequence.current) setSaveState('error'); });
+    }, 300);
+    scheduleSave(homeItems);
+    return scheduleSave.cancel;
   }, [homeItems, ready]);
 
   const filteredCatalog = useMemo(() => catalog.filter((item) => {

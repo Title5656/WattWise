@@ -2,30 +2,16 @@ import { env } from 'cloudflare:workers';
 import { applianceCatalog, hydrateHomeItem, type HomeAppliance } from '@/lib/home-config';
 
 const householdKey = 'default-home';
-const tableSql = `CREATE TABLE IF NOT EXISTS saved_home_appliances (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  household_key TEXT NOT NULL,
-  appliance_key TEXT NOT NULL,
-  quantity INTEGER NOT NULL DEFAULT 1,
-  hours_per_day REAL NOT NULL DEFAULT 0,
-  position INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL
-)`;
-const indexSql = 'CREATE INDEX IF NOT EXISTS idx_saved_home_appliances_household ON saved_home_appliances(household_key, position)';
 
 type SavedRow = { id: number; appliance_key: string; quantity: number; hours_per_day: number };
 
-async function ensureHomeTable() {
+function getDb() {
   if (!env.DB) throw new Error('D1 binding DB is unavailable');
-  await env.DB.batch([
-    env.DB.prepare(tableSql),
-    env.DB.prepare(indexSql),
-  ]);
   return env.DB;
 }
 
 async function readItems() {
-  const db = await ensureHomeTable();
+  const db = getDb();
   const result = await db.prepare(
     'SELECT id, appliance_key, quantity, hours_per_day FROM saved_home_appliances WHERE household_key = ? ORDER BY position, id',
   ).bind(householdKey).all<SavedRow>();
@@ -63,7 +49,7 @@ async function save(request: Request) {
       };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 
-    const db = await ensureHomeTable();
+    const db = getDb();
     const now = Date.now();
     const statements = [
       db.prepare('DELETE FROM saved_home_appliances WHERE household_key = ?').bind(householdKey),

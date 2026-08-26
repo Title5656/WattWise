@@ -38,12 +38,10 @@ export default function Home() {
     }
     const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refreshHome(); };
     void refreshHome();
-    const interval = window.setInterval(refreshHome, 15000);
     window.addEventListener('focus', refreshHome);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       active = false;
-      window.clearInterval(interval);
       window.removeEventListener('focus', refreshHome);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
