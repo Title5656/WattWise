@@ -3,7 +3,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Banknote, Gauge, House, Info, Plus, Search, Trash2, Zap } from 'lucide-react';
 import { WattWiseSidebar } from '../components/WattWiseSidebar';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { applianceCatalog as catalog, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
 
 const categories = ['ทั้งหมด', ...Array.from(new Set(catalog.map((item) => item.category)))];
@@ -94,22 +98,22 @@ export default function MyHomePage() {
     <section className="my-home-content">
       <header className="builder-header">
         <div><p className="kicker">MY HOME · ENERGY BUILDER</p><h1>ประกอบบ้านจำลองของคุณ</h1><span>เลือกเครื่องใช้ไฟฟ้า ปรับเวลาใช้งาน และดูค่าพลังงานโดยประมาณทันที</span></div>
-        <div className="builder-header-actions"><span className={`save-pill ${saveState}`}><i />{saveState === 'loading' ? 'กำลังโหลด...' : saveState === 'saving' ? 'กำลังบันทึก...' : saveState === 'saved' ? 'บันทึกอัตโนมัติแล้ว' : 'บันทึกไม่สำเร็จ'}</span><Link href="/#overview" className="back-status">‹ <span>กลับหน้า Status</span></Link></div>
+        <div className="builder-header-actions"><span className={`save-pill ${saveState}`}><i />{saveState === 'loading' ? 'กำลังโหลด...' : saveState === 'saving' ? 'กำลังบันทึก...' : saveState === 'saved' ? 'บันทึกอัตโนมัติแล้ว' : 'บันทึกไม่สำเร็จ'}</span><Button asChild variant="outline" className="back-status"><Link href="/#overview"><ArrowLeft aria-hidden="true" /><span>กลับหน้า Status</span></Link></Button></div>
       </header>
 
       <section className="builder-summary" aria-label="สรุปบ้านจำลอง">
-        <article><i>⌂</i><span><small>อุปกรณ์ในบ้าน</small><strong>{summary.totalUnits}</strong><em>เครื่อง</em></span></article>
-        <article><i>⌁</i><span><small>พลังงานต่อเดือน</small><strong>{formatNumber(summary.monthlyKwh, 1)}</strong><em>kWh</em></span></article>
-        <article className="bill"><i>฿</i><span><small>ค่าไฟโดยประมาณ</small><strong>{formatNumber(summary.monthlyBill)}</strong><em>บาท / เดือน</em></span></article>
-        <article><i>◒</i><span><small>พลังงานเฉลี่ยต่อวัน</small><strong>{formatNumber(summary.dailyKwh, 1)}</strong><em>kWh</em></span></article>
+        <article><i><House aria-hidden="true" /></i><span><small>อุปกรณ์ในบ้าน</small><strong>{summary.totalUnits}</strong><em>เครื่อง</em></span></article>
+        <article><i><Zap aria-hidden="true" /></i><span><small>พลังงานต่อเดือน</small><strong>{formatNumber(summary.monthlyKwh, 1)}</strong><em>kWh</em></span></article>
+        <article className="bill"><i><Banknote aria-hidden="true" /></i><span><small>ค่าไฟโดยประมาณ</small><strong>{formatNumber(summary.monthlyBill)}</strong><em>บาท / เดือน</em></span></article>
+        <article><i><Gauge aria-hidden="true" /></i><span><small>พลังงานเฉลี่ยต่อวัน</small><strong>{formatNumber(summary.dailyKwh, 1)}</strong><em>kWh</em></span></article>
       </section>
 
       <section className="builder-workspace">
         <aside className="builder-catalog glass-panel">
           <header className="builder-panel-heading"><div><span>01</span><h2>เลือกเครื่องใช้ไฟฟ้า</h2></div><em>{filteredCatalog.length} รุ่น</em></header>
-          <label className="builder-search"><i>⌕</i><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหายี่ห้อ รุ่น หรือประเภท..." /></label>
-          <div className="builder-tabs" aria-label="หมวดหมู่เครื่องใช้ไฟฟ้า">{categories.map((item) => <button className={category === item ? 'selected' : ''} onClick={() => setCategory(item)} key={item}>{item}</button>)}</div>
-          <div className="builder-catalog-list">{filteredCatalog.map((item) => <article
+          <label className="builder-search"><i><Search aria-hidden="true" /></i><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหายี่ห้อ รุ่น หรือประเภท..." /></label>
+          <div className="builder-tabs" aria-label="หมวดหมู่เครื่องใช้ไฟฟ้า">{categories.map((item) => <Button variant="ghost" className={category === item ? 'selected' : ''} onClick={() => setCategory(item)} key={item}>{item}</Button>)}</div>
+          <div className="builder-catalog-list">{filteredCatalog.map((item) => <Card
             className="builder-appliance"
             draggable
             key={item.id}
@@ -118,8 +122,8 @@ export default function MyHomePage() {
             <div className="builder-product-image"><Image src={item.image} alt={`${item.brand} ${item.model}`} width={160} height={120} /></div>
             <div className="builder-product-copy"><span>{item.brand}</span><b>{item.name}</b><em>{item.detail}</em><small>{item.model}</small></div>
             <strong>{formatNumber(item.watts)}<small>W</small></strong>
-            <button onClick={() => addToHome(item.id)} aria-label={`เพิ่ม ${item.name}`}>＋</button>
-          </article>)}</div>
+            <Button variant="ghost" size="icon" onClick={() => addToHome(item.id)} aria-label={`เพิ่ม ${item.name}`}><Plus aria-hidden="true" /></Button>
+          </Card>)}</div>
         </aside>
 
         <section className="builder-home glass-panel">
@@ -130,20 +134,20 @@ export default function MyHomePage() {
             onDragLeave={() => setDragActive(false)}
             onDrop={handleDrop}
           >
-            {homeItems.length === 0 ? <div className="builder-empty"><i>＋</i><h3>เริ่มสร้างบ้านพลังงานของคุณ</h3><p>ลากเครื่องใช้ไฟฟ้าจากรายการด้านซ้ายมาวาง<br />หรือกดเครื่องหมายบวกบนการ์ด</p><span>ข้อมูลจะคำนวณใหม่แบบทันที</span></div>
+            {homeItems.length === 0 ? <div className="builder-empty"><i><Plus aria-hidden="true" /></i><h3>เริ่มสร้างบ้านพลังงานของคุณ</h3><p>ลากเครื่องใช้ไฟฟ้าจากรายการด้านซ้ายมาวาง<br />หรือกดเครื่องหมายบวกบนการ์ด</p><span>ข้อมูลจะคำนวณใหม่แบบทันที</span></div>
               : <div className="builder-home-list">{homeItems.map((item) => {
                 const kwh = (item.watts * item.quantity * item.hoursPerDay * 30) / 1000;
-                return <article className="builder-home-item" key={item.instanceId}>
+                return <Card className="builder-home-item" key={item.instanceId}>
                   <div className="builder-home-image"><Image src={item.image} alt="" width={88} height={88} /></div>
                   <div className="builder-item-name"><span>{item.brand}</span><b>{item.name}</b><small>{item.model}</small></div>
-                  <label>จำนวน<input type="number" min="1" max="20" value={item.quantity} onChange={(event) => updateItem(item.instanceId, 'quantity', Number(event.target.value))} /></label>
-                  <label>ชม. / วัน<input type="number" min="0" max="24" step="0.5" value={item.hoursPerDay} onChange={(event) => updateItem(item.instanceId, 'hoursPerDay', Number(event.target.value))} /></label>
+                  <label>จำนวน<Input type="number" min="1" max="20" value={item.quantity} onChange={(event) => updateItem(item.instanceId, 'quantity', Number(event.target.value))} /></label>
+                  <label>ชม. / วัน<Input type="number" min="0" max="24" step="0.5" value={item.hoursPerDay} onChange={(event) => updateItem(item.instanceId, 'hoursPerDay', Number(event.target.value))} /></label>
                   <div className="builder-item-energy"><b>{formatNumber(kwh, 1)}</b><span>kWh / เดือน</span></div>
-                  <button onClick={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} aria-label={`ลบ ${item.name}`}>×</button>
-                </article>;
+                  <Button variant="ghost" size="icon" onClick={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} aria-label={`ลบ ${item.name}`}><Trash2 aria-hidden="true" /></Button>
+                </Card>;
               })}</div>}
           </div>
-          <footer className="builder-method"><i>i</i><p><b>วิธีคำนวณเบื้องต้น</b><span>กำลังไฟ × จำนวน × ชั่วโมงใช้งาน × 30 วัน โดยใช้อัตราเฉลี่ยชั่วคราว 4.18 บาท/kWh</span></p></footer>
+          <footer className="builder-method"><i><Info aria-hidden="true" /></i><p><b>วิธีคำนวณเบื้องต้น</b><span>กำลังไฟ × จำนวน × ชั่วโมงใช้งาน × 30 วัน โดยใช้อัตราเฉลี่ยชั่วคราว 4.18 บาท/kWh</span></p></footer>
         </section>
       </section>
     </section>
