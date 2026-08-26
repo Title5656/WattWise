@@ -66,6 +66,16 @@ export const householdAppliances = sqliteTable('household_appliances', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 }, (table) => [index('idx_household_appliances_household').on(table.householdId)]);
 
+export const savedHomeAppliances = sqliteTable('saved_home_appliances', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdKey: text('household_key').notNull(),
+  applianceKey: text('appliance_key').notNull(),
+  quantity: integer('quantity').notNull().default(1),
+  hoursPerDay: real('hours_per_day').notNull().default(0),
+  position: integer('position').notNull().default(0),
+  updatedAt: integer('updated_at').notNull(),
+}, (table) => [index('idx_saved_home_appliances_household').on(table.householdKey, table.position)]);
+
 export const tariffPlans = sqliteTable('tariff_plans', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),

@@ -2,8 +2,24 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'WattWise — Home Energy Builder',
-  description: 'สร้างบ้านจำลองจากเครื่องใช้ไฟฟ้าจริงและประเมินการใช้พลังงานภายในบ้าน',
+  title: 'WattWise — รู้ทันพลังงานในบ้าน',
+  description: 'แดชบอร์ดติดตามโหลดไฟ ค่าไฟ และสถิติการใช้พลังงานภายในบ้านในมุมมองเดียว',
+  openGraph: {
+    title: 'WattWise — รู้ทันพลังงานในบ้าน',
+    description: 'ติดตามโหลดไฟ ค่าไฟ และสถิติพลังงานของบ้านในมุมมองเดียว',
+    images: [{
+      url: 'https://wattwise-home-energy.v1chr.chatgpt.site/og.png',
+      width: 1200,
+      height: 630,
+      alt: 'WattWise — รู้ทันพลังงานในบ้าน',
+    }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'WattWise — รู้ทันพลังงานในบ้าน',
+    description: 'ติดตามโหลดไฟ ค่าไฟ และสถิติพลังงานของบ้านในมุมมองเดียว',
+    images: ['https://wattwise-home-energy.v1chr.chatgpt.site/og.png'],
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -1,170 +1,127 @@
 'use client';
 
-import { DragEvent, useMemo, useState } from 'react';
+import Image from 'next/image';
+import { useEffect, useMemo, useState } from 'react';
+import { WattWiseSidebar } from './components/WattWiseSidebar';
+import { calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
 
-type Appliance = {
-  id: string;
-  category: string;
-  brand: string;
-  model: string;
-  name: string;
-  watts: number;
-  unit: string;
-  icon: string;
-  color: string;
+const chartData = {
+  day: [1.4, 1.2, 1.1, 1.3, 1.9, 2.7, 3.4, 2.9, 2.4, 3.1, 3.7, 3.24],
+  week: [2.1, 2.7, 2.45, 3.2, 3.6, 2.9, 3.24],
+  month: [2.2, 2.55, 2.4, 2.8, 3.15, 2.95, 3.24],
 };
-
-type HomeAppliance = Appliance & {
-  instanceId: string;
-  quantity: number;
-  hoursPerDay: number;
-};
-
-const catalog: Appliance[] = [
-  { id: 'ac-daikin-18', category: 'เครื่องปรับอากาศ', brand: 'Daikin', model: 'FTKF18WV2S', name: 'Inverter 18,000 BTU', watts: 1540, unit: 'กำลังไฟพิกัด', icon: '❄', color: '#dff4ff' },
-  { id: 'ac-mitsu-12', category: 'เครื่องปรับอากาศ', brand: 'Mitsubishi', model: 'MSY-KY13VF', name: 'Inverter 12,000 BTU', watts: 1020, unit: 'กำลังไฟพิกัด', icon: '❄', color: '#e8efff' },
-  { id: 'fridge-samsung', category: 'ตู้เย็น', brand: 'Samsung', model: 'RT29K501JB1', name: 'ตู้เย็น 2 ประตู 300 ลิตร', watts: 110, unit: 'กำลังไฟโดยประมาณ', icon: '▣', color: '#e9f7ef' },
-  { id: 'tv-lg-55', category: 'โทรทัศน์', brand: 'LG', model: '55UT8050', name: '4K Smart TV 55 นิ้ว', watts: 125, unit: 'ขณะใช้งาน', icon: '▰', color: '#f4eaff' },
-  { id: 'washer-electrolux', category: 'เครื่องซักผ้า', brand: 'Electrolux', model: 'EWF9024D3WB', name: 'ฝาหน้า 9 กก.', watts: 500, unit: 'กำลังไฟพิกัด', icon: '◉', color: '#e7f7f5' },
-  { id: 'fan-hatari', category: 'พัดลม', brand: 'Hatari', model: 'HT-S16M7', name: 'พัดลมตั้งพื้น 16 นิ้ว', watts: 49, unit: 'กำลังไฟพิกัด', icon: '✣', color: '#fff1da' },
-];
-
-const categories = ['ทั้งหมด', ...Array.from(new Set(catalog.map((item) => item.category)))];
+type Period = keyof typeof chartData;
 
 function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat('th-TH', { maximumFractionDigits: digits }).format(value);
 }
 
 export default function Home() {
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('ทั้งหมด');
+  const [period, setPeriod] = useState<Period>('day');
   const [homeItems, setHomeItems] = useState<HomeAppliance[]>([]);
-  const [dragActive, setDragActive] = useState(false);
+  const [homeLoading, setHomeLoading] = useState(true);
 
-  const filteredCatalog = useMemo(() => catalog.filter((item) => {
-    const matchCategory = category === 'ทั้งหมด' || item.category === category;
-    const haystack = `${item.brand} ${item.model} ${item.name}`.toLowerCase();
-    return matchCategory && haystack.includes(query.trim().toLowerCase());
-  }), [category, query]);
+  useEffect(() => {
+    let active = true;
+    async function refreshHome() {
+      try {
+        const response = await fetch('/api/home', { cache: 'no-store' });
+        if (!response.ok) throw new Error('load failed');
+        const data = await response.json() as { items: HomeAppliance[] };
+        if (active) setHomeItems(data.items);
+      } finally {
+        if (active) setHomeLoading(false);
+      }
+    }
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refreshHome(); };
+    void refreshHome();
+    const interval = window.setInterval(refreshHome, 15000);
+    window.addEventListener('focus', refreshHome);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshHome);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
 
-  const monthlyKwh = homeItems.reduce(
-    (sum, item) => sum + (item.watts * item.quantity * item.hoursPerDay * 30) / 1000,
-    0,
-  );
-  const estimatedBill = monthlyKwh * 4.18;
+  const summary = useMemo(() => calculateHomeSummary(homeItems), [homeItems]);
+  const values = useMemo(() => {
+    const scale = summary.ratedLoadKw > 0 ? summary.ratedLoadKw / 3.24 : 0;
+    return chartData[period].map((value) => value * scale);
+  }, [period, summary.ratedLoadKw]);
+  const peak = Math.max(...values, 0);
+  const chartPeak = Math.max(peak, 0.01);
+  const averageLoad = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  const budgetProgress = Math.min(100, (summary.monthlyBill / 3500) * 100);
+  const metrics = [
+    { icon: '⌁', label: 'โหลดไฟรวม', note: 'เมื่ออุปกรณ์ทำงานพร้อมกัน', value: formatNumber(summary.ratedLoadKw, 2), unit: 'kW', trend: `${summary.totalUnits} เครื่อง`, compare: 'จาก My Home', tone: 'lime', bars: [2,3,2,5,4,7,6,8] },
+    { icon: '◒', label: 'พลังงานต่อวัน', note: 'จากชั่วโมงใช้งานที่กำหนด', value: formatNumber(summary.dailyKwh, 1), unit: 'kWh', trend: formatNumber(summary.monthlyKwh, 1), compare: 'kWh ต่อเดือน', tone: 'blue', bars: [2,4,3,6,5,8,6,7] },
+    { icon: '฿', label: 'ค่าไฟประมาณการ', note: 'อัตราเฉลี่ย 4.18 บาท/kWh', value: formatNumber(summary.monthlyBill), unit: 'บาท', trend: formatNumber(summary.monthlyKwh, 1), compare: 'หน่วยต่อเดือน', tone: 'amber', bars: [3,2,4,3,5,6,7,8] },
+  ];
+  const monthlyBills = [0.82, 0.91, 1.08, 0.99, 0.94, 1].map((ratio, index) => ({ month: ['มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.'][index], value: summary.monthlyBill * ratio }));
+  const monthlyPeak = Math.max(...monthlyBills.map((bill) => bill.value), 1);
+  const topDevices = [...homeItems].sort((a, b) => b.watts * b.quantity - a.watts * a.quantity).slice(0, 4).map((item, index) => {
+    const watts = item.watts * item.quantity;
+    const share = summary.ratedLoadKw > 0 ? watts / (summary.ratedLoadKw * 1000) * 100 : 0;
+    return { image: item.image, name: item.name, detail: `${item.brand} · ${item.model} · ${item.quantity} เครื่อง`, watts: `${formatNumber(watts / 1000, 2)} kW`, share: `${formatNumber(share)}% ของทั้งหมด`, width: share, tone: ['blue', 'amber', 'lime', 'violet'][index] };
+  });
 
-  function addToHome(id: string) {
-    const appliance = catalog.find((item) => item.id === id);
-    if (!appliance) return;
-    setHomeItems((current) => [
-      ...current,
-      { ...appliance, instanceId: `${id}-${Date.now()}`, quantity: 1, hoursPerDay: appliance.category === 'ตู้เย็น' ? 24 : 4 },
-    ]);
-  }
+  return <main className="dashboard-shell">
+    <div className="meteor-field" aria-hidden="true">
+      {Array.from({ length: 14 }, (_, index) => <i key={index} />)}
+    </div>
+    <WattWiseSidebar active="status" />
 
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setDragActive(false);
-    addToHome(event.dataTransfer.getData('text/appliance-id'));
-  }
-
-  function updateItem(instanceId: string, field: 'quantity' | 'hoursPerDay', value: number) {
-    setHomeItems((current) => current.map((item) => item.instanceId === instanceId
-      ? { ...item, [field]: Math.max(field === 'quantity' ? 1 : 0, Math.min(field === 'quantity' ? 20 : 24, value || 0)) }
-      : item));
-  }
-
-  return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand-mark">W</div>
-        <div>
-          <p className="eyebrow">HOME ENERGY LAB</p>
-          <h1>WattWise</h1>
-        </div>
-        <nav aria-label="เมนูหลัก">
-          <button className="nav-active">สร้างบ้าน</button>
-          <button>แดชบอร์ด</button>
-          <button>จำลองสถานการณ์</button>
-        </nav>
-        <button className="outline-button">บันทึกบ้าน</button>
+    <section className="dashboard-content" id="overview">
+      <header className="dashboard-header">
+        <div><p className="kicker">ภาพรวมพลังงาน</p><h1>สวัสดีตอนเย็น, วรปรัชญ์</h1><span>{homeLoading ? 'กำลังเชื่อมข้อมูล My Home...' : `อัปเดตจาก My Home · ${summary.totalUnits} เครื่อง`}</span></div>
+        <div className="header-actions"><button className="notify" aria-label="การแจ้งเตือน">♢<i /></button><button className="profile"><i>WP</i><span><b>บ้านวรปรัชญ์</b><small>เจ้าของบ้าน</small></span></button></div>
       </header>
 
-      <section className="hero">
-        <div>
-          <p className="eyebrow green">ENERGY BUILDER</p>
-          <h2>ประกอบบ้านของคุณ<br />แล้วดูว่าพลังงานไปอยู่ที่ไหน</h2>
-          <p className="hero-copy">เลือกเครื่องใช้ไฟฟ้าจากรุ่นจริง ลากเข้าบ้าน และปรับพฤติกรรมการใช้งานเพื่อดูค่าประมาณแบบทันที</p>
-        </div>
-        <div className="summary-grid">
-          <div><span>อุปกรณ์ในบ้าน</span><strong>{homeItems.length}</strong><small>รายการ</small></div>
-          <div><span>พลังงานต่อเดือน</span><strong>{formatNumber(monthlyKwh, 1)}</strong><small>kWh</small></div>
-          <div className="accent"><span>ค่าไฟโดยประมาณ</span><strong>฿{formatNumber(estimatedBill)}</strong><small>ต่อเดือน</small></div>
-        </div>
+      <section className="system-banner"><div className="pulse"><i /></div><div><b>{homeLoading ? 'กำลังโหลดข้อมูลบ้าน' : homeItems.length ? 'เชื่อมข้อมูล My Home แล้ว' : 'เริ่มเพิ่มอุปกรณ์ใน My Home'}</b><p>{homeItems.length ? 'โหลด พลังงาน และค่าไฟคำนวณจากอุปกรณ์ที่บันทึกไว้' : 'ยังไม่มีอุปกรณ์ในบ้านจำลอง · ไปที่ My Home เพื่อเริ่มต้น'}</p></div><span><i /> SYNC</span></section>
+
+      <section className="metric-grid" aria-label="ข้อมูลพลังงานสำคัญ">
+        {metrics.map((item, index) => <article className={`metric-card ${item.tone} ${index === 0 ? 'featured' : ''}`} key={item.label}>
+          <div className="metric-title"><i>{item.icon}</i><span><b>{item.label}</b><small>{item.note}</small></span></div>
+          <div className="metric-value"><strong>{item.value}</strong><span>{item.unit}</span></div>
+          <p className="trend">{item.trend} <span>{item.compare}</span></p>
+          <div className="spark" aria-hidden="true">{item.bars.map((height, i) => <i key={i} style={{height: `${height * 9}%`}} />)}</div>
+        </article>)}
+        <article className="metric-card violet forecast">
+          <div className="metric-title"><i>◎</i><span><b>คาดการณ์สิ้นเดือน</b><small>จากรูปแบบการใช้งาน</small></span></div>
+          <div className="metric-value"><strong>{formatNumber(summary.monthlyBill)}</strong><span>บาท</span></div>
+          <div className="budget"><p><span>งบประมาณ 3,500 บาท</span><b>{formatNumber(budgetProgress)}%</b></p><i><span style={{ width: `${budgetProgress}%` }} /></i></div>
+        </article>
       </section>
 
-      <section className="builder-grid">
-        <aside className="catalog-panel">
-          <div className="panel-heading">
-            <div><p className="step">01</p><h3>เลือกเครื่องใช้ไฟฟ้า</h3></div>
-            <span>{filteredCatalog.length} รุ่น</span>
-          </div>
-          <label className="search-box">
-            <span>⌕</span>
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหายี่ห้อหรือรุ่น..." />
-          </label>
-          <div className="category-tabs" aria-label="หมวดหมู่">
-            {categories.map((item) => <button key={item} className={category === item ? 'selected' : ''} onClick={() => setCategory(item)}>{item}</button>)}
-          </div>
-          <div className="catalog-list">
-            {filteredCatalog.map((item) => (
-              <article
-                className="appliance-card"
-                draggable
-                key={item.id}
-                onDragStart={(event) => event.dataTransfer.setData('text/appliance-id', item.id)}
-              >
-                <div className="device-icon" style={{ background: item.color }}>{item.icon}</div>
-                <div className="device-copy"><span>{item.brand}</span><strong>{item.name}</strong><small>{item.model}</small></div>
-                <div className="watt-badge"><strong>{formatNumber(item.watts)}</strong><span>W</span></div>
-                <button onClick={() => addToHome(item.id)} aria-label={`เพิ่ม ${item.name}`}>＋</button>
-              </article>
-            ))}
-          </div>
-        </aside>
-
-        <section className="home-panel">
-          <div className="panel-heading">
-            <div><p className="step">02</p><h3>บ้านของฉัน</h3></div>
-            <span>ลากอุปกรณ์มาวาง</span>
-          </div>
-          <div
-            className={`drop-zone ${dragActive ? 'drag-active' : ''} ${homeItems.length ? 'has-items' : ''}`}
-            onDragOver={(event) => { event.preventDefault(); setDragActive(true); }}
-            onDragLeave={() => setDragActive(false)}
-            onDrop={handleDrop}
-          >
-            {homeItems.length === 0 ? (
-              <div className="empty-state"><div>＋</div><h4>เริ่มสร้างบ้านพลังงานของคุณ</h4><p>ลากเครื่องใช้ไฟฟ้าจากรายการด้านซ้าย<br />หรือกดเครื่องหมายบวกบนการ์ด</p></div>
-            ) : (
-              <div className="home-list">
-                {homeItems.map((item) => {
-                  const kwh = (item.watts * item.quantity * item.hoursPerDay * 30) / 1000;
-                  return <article className="home-item" key={item.instanceId}>
-                    <div className="device-icon" style={{ background: item.color }}>{item.icon}</div>
-                    <div className="home-item-title"><span>{item.brand} · {item.model}</span><strong>{item.name}</strong></div>
-                    <label>จำนวน<input type="number" min="1" max="20" value={item.quantity} onChange={(e) => updateItem(item.instanceId, 'quantity', Number(e.target.value))} /></label>
-                    <label>ชม./วัน<input type="number" min="0" max="24" step="0.5" value={item.hoursPerDay} onChange={(e) => updateItem(item.instanceId, 'hoursPerDay', Number(e.target.value))} /></label>
-                    <div className="item-energy"><strong>{formatNumber(kwh, 1)}</strong><span>kWh/เดือน</span></div>
-                    <button className="remove" onClick={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} aria-label={`ลบ ${item.name}`}>×</button>
-                  </article>;
-                })}
-              </div>
-            )}
-          </div>
-          <footer className="method-note"><strong>หมายเหตุเรื่องการคำนวณ</strong><p>ตัวอย่างแรกใช้กำลังไฟพิกัด × เวลาใช้งาน อัตราค่าไฟ ฿4.18/kWh เป็นค่าชั่วคราว ก่อนเชื่อมระบบอัตราค่าไฟแบบขั้นบันไดและข้อมูลฉลากพลังงาน</p></footer>
-        </section>
+      <section className="load-card" id="live-load">
+        <header><div><p className="kicker">LIVE MONITOR</p><h2>โหลดไฟภายในบ้าน</h2><span>กำลังไฟรวมจากอุปกรณ์ที่กำลังทำงาน</span></div><div className="period-switch">{(['day','week','month'] as Period[]).map(item => <button className={period === item ? 'active' : ''} onClick={() => setPeriod(item)} key={item}>{item === 'day' ? 'วันนี้' : item === 'week' ? '7 วัน' : '30 วัน'}</button>)}</div></header>
+        <div className="load-summary"><span>โหลดรวม <b>{formatNumber(summary.ratedLoadKw, 2)} <small>kW</small></b></span><span>สูงสุด <b>{formatNumber(peak, 2)} <small>kW</small></b></span><span>เฉลี่ย <b>{formatNumber(averageLoad, 2)} <small>kW</small></b></span></div>
+        <div className="bar-chart" aria-label="กราฟโหลดไฟตามช่วงเวลา">{values.map((value, index) => <div className="bar-column" key={`${period}-${index}`}><em>{value.toFixed(1)}</em><i style={{height: `${(value / chartPeak) * 100}%`}} /><small>{period === 'day' ? `${String(index * 2).padStart(2,'0')}:00` : period === 'week' ? ['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.'][index] : `W${index + 1}`}</small></div>)}</div>
       </section>
-    </main>
-  );
+
+      <section className="overview-grid" id="monthly">
+        <article className="bill-card">
+          <header className="section-heading"><div><p className="kicker">6 MONTH OVERVIEW</p><h2>ค่าไฟย้อนหลัง</h2><span>แนวโน้มค่าใช้จ่ายรายเดือนของบ้าน</span></div><button>ดูรายละเอียด <span>↗</span></button></header>
+          <div className="bill-highlight"><span>ประมาณการเดือนนี้</span><strong>฿{formatNumber(summary.monthlyBill)}</strong><p><b>{formatNumber(summary.monthlyKwh, 1)} kWh</b> จาก My Home</p></div>
+          <div className="monthly-chart" aria-label="ค่าไฟย้อนหลังหกเดือน">
+            {monthlyBills.map((bill) => <div key={bill.month}><em>฿{formatNumber(bill.value)}</em><i style={{height: `${(bill.value / monthlyPeak) * 100}%`}} className={bill.month === 'ส.ค.' ? 'current' : ''} /><small>{bill.month}</small></div>)}
+          </div>
+        </article>
+
+        <article className="devices-card" id="devices">
+          <header className="section-heading"><div><p className="kicker">TOP CONSUMPTION</p><h2>อุปกรณ์ที่ใช้ไฟสูงสุด</h2><span>เรียงตามโหลดปัจจุบัน</span></div><button aria-label="ดูอุปกรณ์ทั้งหมด">ทั้งหมด <span>›</span></button></header>
+          <div className="device-list">{topDevices.length ? topDevices.map((device, index) => <div className={`device-row ${device.tone}`} key={`${device.name}-${index}`}>
+            <div className="device-product-thumb"><Image src={device.image} alt="" width={72} height={72} /></div><div className="device-copy"><b>{device.name}</b><small>{device.detail}</small><span><i style={{width: `${device.width}%`}} /></span></div><div className="device-usage"><b>{device.watts}</b><small>{device.share}</small></div>
+          </div>) : <div className="device-empty"><i>＋</i><div><b>ยังไม่มีเครื่องใช้ไฟฟ้า</b><span>เพิ่มอุปกรณ์ใน My Home แล้วข้อมูลจะปรากฏที่นี่</span></div><a href="/my-home">ไปที่ My Home ›</a></div>}</div>
+        </article>
+      </section>
+
+      <section className="insight-card" id="settings">
+        <div className="insight-icon">✦</div><div><p className="kicker">WATTWISE INSIGHT</p><h3>ปรับชั่วโมงใช้งานเพื่อดูผลประหยัดทันที</h3><span>ลดการใช้พลังงาน 10% อาจช่วยประหยัดประมาณ <b>฿{formatNumber(summary.monthlyBill * 0.1)} ต่อเดือน</b></span></div><a className="insight-action" href="/my-home">ปรับใน My Home <span>→</span></a>
+      </section>
+    </section>
+  </main>;
 }

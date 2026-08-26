@@ -1,0 +1,54 @@
+export type Appliance = {
+  id: string;
+  category: string;
+  brand: string;
+  model: string;
+  name: string;
+  detail: string;
+  watts: number;
+  image: string;
+};
+
+export type HomeAppliance = Appliance & {
+  instanceId: string;
+  quantity: number;
+  hoursPerDay: number;
+};
+
+export const applianceCatalog: Appliance[] = [
+  { id: 'ac-daikin-ftkd18', category: 'เครื่องปรับอากาศ', brand: 'Daikin', model: 'FTKD18ZV2S', name: 'แอร์ผนัง Inverter', detail: '18,100 BTU · Streamer ฟอกอากาศ', watts: 1540, image: '/products/daikin-ftkd18zv2s.jpg' },
+  { id: 'ac-mitsubishi-ky13', category: 'เครื่องปรับอากาศ', brand: 'Mitsubishi Electric', model: 'MSY-KY13VF', name: 'Mr. Slim Happy Inverter', detail: '12,283 BTU · V-Air Filter', watts: 1020, image: '/products/mitsubishi-msy-ky13vf.jpg' },
+  { id: 'fridge-samsung-rt35', category: 'ตู้เย็น', brand: 'Samsung', model: 'RT35CG5544B1SV', name: 'ตู้เย็น 2 ประตู Inverter', detail: '345 ลิตร · Optimal Fresh+', watts: 110, image: '/products/samsung-rt35cg5544b1sv.png' },
+  { id: 'fridge-lg-gnb392', category: 'ตู้เย็น', brand: 'LG', model: 'GN-B392PLBK', name: 'ตู้เย็น 2 ประตู Smart Inverter', detail: '395 ลิตร · ThinQ Wi-Fi', watts: 110, image: '/products/lg-gn-b392plbk.jpg' },
+  { id: 'tv-lg-ut80-55', category: 'โทรทัศน์', brand: 'LG', model: '55UT8050PSB', name: 'UHD AI Smart TV UT80', detail: '55 นิ้ว · 4K · webOS 24', watts: 125, image: '/products/lg-55ut8050psb.jpg' },
+  { id: 'tv-sony-bravia3-55', category: 'โทรทัศน์', brand: 'Sony', model: 'K-55S30', name: 'BRAVIA 3 Google TV', detail: '55 นิ้ว · 4K HDR · Dolby Vision', watts: 130, image: '/products/sony-k-55s30.jpg' },
+  { id: 'washer-electrolux-9', category: 'เครื่องซักผ้า', brand: 'Electrolux', model: 'EWF9024D3WB', name: 'UltimateCare 300 ฝาหน้า', detail: '9 กก. · 1,200 rpm · EcoInverter', watts: 350, image: '/products/electrolux-ewf9024d3wb.png' },
+  { id: 'washer-samsung-9', category: 'เครื่องซักผ้า', brand: 'Samsung', model: 'WW90T504DAW/ST', name: 'AI Control EcoBubble', detail: '9 กก. · 1,400 rpm · SmartThings', watts: 500, image: '/products/samsung-ww90t504daw.png' },
+  { id: 'fan-hatari-s16m7', category: 'พัดลม', brand: 'Hatari', model: 'HT-S16M7', name: 'พัดลมสไลด์ปรับระดับ', detail: '16 นิ้ว · 3 ระดับแรงลม', watts: 43, image: '/products/hatari-ht-s16m7.jpg' },
+  { id: 'fan-xiaomi-smart2', category: 'พัดลม', brand: 'Xiaomi', model: 'BPLDS02DM', name: 'Mi Smart Standing Fan 2', detail: 'มอเตอร์ DC · Wi-Fi · เสียงเบา', watts: 15, image: '/products/xiaomi-smart-fan-2.png' },
+  { id: 'heater-stiebel-xg45', category: 'เครื่องทำน้ำอุ่น', brand: 'Stiebel Eltron', model: 'XG 45 EC', name: 'เครื่องทำน้ำอุ่น X-TRA', detail: '4.5 kW · ELCB · IP25', watts: 4500, image: '/products/stiebel-xg45ec.jpg' },
+  { id: 'microwave-toshiba-sm20', category: 'เครื่องใช้ในครัว', brand: 'Toshiba', model: 'ER-SM20(W)TH', name: 'ไมโครเวฟระบบธรรมดา', detail: '20 ลิตร · 5 ระดับความร้อน', watts: 800, image: '/products/toshiba-er-sm20.webp' },
+  { id: 'rice-sharp-com18', category: 'เครื่องใช้ในครัว', brand: 'Sharp', model: 'KS-COM18', name: 'หม้อหุงข้าวดิจิทัล', detail: '1.8 ลิตร · Fuzzy Control · ตั้งเวลาได้', watts: 830, image: '/products/sharp-ks-com18.png' },
+];
+
+export const averageTariffPerKwh = 4.18;
+
+export function calculateHomeSummary(items: HomeAppliance[]) {
+  const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
+  const ratedLoadKw = items.reduce((sum, item) => sum + item.watts * item.quantity, 0) / 1000;
+  const dailyKwh = items.reduce((sum, item) => sum + item.watts * item.quantity * item.hoursPerDay, 0) / 1000;
+  const monthlyKwh = dailyKwh * 30;
+  const monthlyBill = monthlyKwh * averageTariffPerKwh;
+  return { totalUnits, ratedLoadKw, dailyKwh, monthlyKwh, monthlyBill };
+}
+
+export function hydrateHomeItem(row: {
+  id: number;
+  applianceKey: string;
+  quantity: number;
+  hoursPerDay: number;
+}): HomeAppliance | null {
+  const appliance = applianceCatalog.find((item) => item.id === row.applianceKey);
+  if (!appliance) return null;
+  return { ...appliance, instanceId: `saved-${row.id}`, quantity: row.quantity, hoursPerDay: row.hoursPerDay };
+}
