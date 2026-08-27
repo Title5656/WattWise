@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: 'WattWise — รู้ทันพลังงานในบ้าน',
   description: 'แดชบอร์ดติดตามโหลดไฟ ค่าไฟ และสถิติการใช้พลังงานภายในบ้านในมุมมองเดียว',
   icons: {
-    icon: '/wattwise-logo.png',
+    icon: '/wattwise-logo-small.png',
   },
   openGraph: {
     title: 'WattWise — รู้ทันพลังงานในบ้าน',

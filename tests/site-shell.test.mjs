@@ -16,8 +16,21 @@ test('public pages do not include the meteor field or its animation styles', asy
   }
 });
 
-test('the root metadata uses the supplied WattWise logo as its favicon', async () => {
-  const layout = await readProjectFile('app/layout.tsx');
+test('the root metadata and sidebar use the optimized WattWise logo', async () => {
+  const [layout, sidebar] = await Promise.all([
+    readProjectFile('app/layout.tsx'),
+    readProjectFile('app/components/WattWiseSidebar.tsx'),
+  ]);
 
-  assert.match(layout, /icons:\s*{\s*icon:\s*['"]\/wattwise-logo\.png['"]/);
+  for (const source of [layout, sidebar]) {
+    assert.match(source, /\/wattwise-logo-small\.png/);
+    assert.doesNotMatch(source, /\/wattwise-logo\.png/);
+  }
+});
+
+test('public styles do not use blur-based glass rendering', async () => {
+  const styles = await readProjectFile('app/globals.css');
+
+  assert.doesNotMatch(styles, /(?:-webkit-)?backdrop-filter\s*:/);
+  assert.doesNotMatch(styles, /filter\s*:\s*blur\s*\(/);
 });
