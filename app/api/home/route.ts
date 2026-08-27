@@ -1,8 +1,7 @@
 import { env } from 'cloudflare:workers';
-import { applianceCatalog, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
+import { applianceCatalog, type HomeAppliance } from '@/lib/home-config';
+import { readHomeResponse } from '@/lib/home-response';
 import { householdKey, readSavedHomeItems } from '@/lib/home-storage';
-import { getBillingMonth, selectRecentRecords } from '@/lib/monthly-history';
-import { readMonthlyEnergyRecords, upsertMonthlyEstimate } from '@/lib/monthly-history-db';
 import { getUsageProfile } from '@/lib/usage-profiles';
 
 function getDb() {
@@ -15,12 +14,9 @@ async function readItems() {
 }
 
 async function readResponse(items: HomeAppliance[], now = Date.now()) {
-  const db = getDb();
-  const summary = calculateHomeSummary(items, new Date(now));
-  if (items.length > 0) {
-    await upsertMonthlyEstimate(db, householdKey, getBillingMonth(new Date(now)), summary, now);
-  }
-  return { items, summary, history: selectRecentRecords(await readMonthlyEnergyRecords(db, householdKey)) };
+  return readHomeResponse(getDb(), householdKey, items, now, (error) => {
+    console.error('Unable to read monthly energy history', error);
+  });
 }
 
 export async function GET() {
