@@ -63,7 +63,7 @@ export default function Home() {
   const metrics = [
     { icon: Zap, label: 'โหลดไฟรวม', note: 'เมื่ออุปกรณ์ทำงานพร้อมกัน', value: formatNumber(summary.ratedLoadKw, 2), unit: 'kW', trend: `${summary.totalUnits} เครื่อง`, compare: 'จาก My Home', tone: 'lime', bars: [2,3,2,5,4,7,6,8] },
     { icon: Gauge, label: 'พลังงานต่อวัน', note: 'จากชั่วโมงใช้งานที่กำหนด', value: formatNumber(summary.dailyKwh, 1), unit: 'kWh', trend: formatNumber(summary.monthlyKwh, 1), compare: 'kWh ต่อเดือน', tone: 'blue', bars: [2,4,3,6,5,8,6,7] },
-    { icon: Banknote, label: 'ค่าไฟประมาณการ', note: 'อัตราเฉลี่ย 4.18 บาท/kWh', value: formatNumber(summary.monthlyBill), unit: 'บาท', trend: formatNumber(summary.monthlyKwh, 1), compare: 'หน่วยต่อเดือน', tone: 'amber', bars: [3,2,4,3,5,6,7,8] },
+    { icon: Banknote, label: 'ค่าไฟประมาณการ', note: summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป', value: formatNumber(summary.monthlyBill), unit: 'บาท', trend: formatNumber(summary.monthlyKwh, 1), compare: 'หน่วยต่อเดือน', tone: 'amber', bars: [3,2,4,3,5,6,7,8] },
   ];
   const monthlyBills = [0.82, 0.91, 1.08, 0.99, 0.94, 1].map((ratio, index) => ({ month: ['มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.'][index], value: summary.monthlyBill * ratio }));
   const monthlyPeak = Math.max(...monthlyBills.map((bill) => bill.value), 1);

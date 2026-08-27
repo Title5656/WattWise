@@ -159,6 +159,11 @@ export type TieredTariff = {
   ftRatePerKwh: number;
   vatRate: number;
   label?: string;
+  status?: 'current' | 'latest_known';
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+  sourceUrl?: string;
+  warnings?: CalculationNotice[];
 };
 
 export type TariffInput = AverageRateTariff | TieredTariff;
@@ -173,6 +178,11 @@ export type ElectricityBillResult = {
   subtotal: number;
   vat: number;
   total: number;
+  tariffStatus: 'current' | 'latest_known';
+  tariffEffectiveFrom: string | null;
+  tariffEffectiveTo: string | null;
+  tariffSourceUrl: string | null;
+  warnings: CalculationNotice[];
 };
 
 function roundMoney(value: number) {
@@ -219,6 +229,11 @@ export function calculateElectricityBill(totalKwh: number, tariff: TariffInput):
     subtotal,
     vat,
     total: roundMoney(subtotal + vat),
+    tariffStatus: tariff.status ?? 'current',
+    tariffEffectiveFrom: tariff.effectiveFrom ?? null,
+    tariffEffectiveTo: tariff.effectiveTo ?? null,
+    tariffSourceUrl: tariff.sourceUrl ?? null,
+    warnings: tariff.warnings ?? [],
   };
 }
 

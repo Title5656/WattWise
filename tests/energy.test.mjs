@@ -12,8 +12,12 @@ import {
   addOrIncrementHomeItem,
   applianceCatalog,
   calculateHomeSummary,
+  createHomeItem,
   mergeHomeItems,
+  resolveEnergyInput,
 } from '../lib/home-config.ts';
+import { getResidentialTariff } from '../lib/tariffs.ts';
+import { adjustStepperValue } from '../lib/stepper.ts';
 
 const fan = {
   id: 'fan-hatari-s16m7',
@@ -23,11 +27,12 @@ const fan = {
   name: 'พัดลมสไลด์ปรับระดับ',
   detail: '16 นิ้ว',
   watts: 43,
+  usageProfileId: 'fan',
   image: '/products/hatari-ht-s16m7.jpg',
 };
 
 function homeItem(overrides = {}) {
-  return { ...fan, instanceId: 'fan-1', quantity: 1, hoursPerDay: 4, ...overrides };
+  return { ...fan, instanceId: 'fan-1', quantity: 1, hoursPerDay: 4, cyclesPerMonth: null, ...overrides };
 }
 
 test('adds a duplicate appliance to the existing item quantity', () => {
@@ -159,6 +164,11 @@ test('calculates average and full tiered electricity bill breakdowns', () => {
     subtotal: 627,
     vat: 0,
     total: 627,
+    tariffStatus: 'current',
+    tariffEffectiveFrom: null,
+    tariffEffectiveTo: null,
+    tariffSourceUrl: null,
+    warnings: [],
   });
 
   assert.deepEqual(calculateElectricityBill(150, {
@@ -180,6 +190,11 @@ test('calculates average and full tiered electricity bill breakdowns', () => {
     subtotal: 590,
     vat: 41.3,
     total: 631.3,
+    tariffStatus: 'current',
+    tariffEffectiveFrom: null,
+    tariffEffectiveTo: null,
+    tariffSourceUrl: null,
+    warnings: [],
   });
 });
 
@@ -226,4 +241,56 @@ test('keeps prototype item totals, home total, and bill in sync', () => {
   assert.equal(itemTotal, summary.monthlyKwh);
   assert.equal(summary.bill.total, summary.monthlyBill);
   assert.equal(summary.bill.totalEnergyKwh, summary.monthlyKwh);
+});
+
+test('resolves realistic usage profiles for the catalog', () => {
+  const ac = createHomeItem(applianceCatalog.find((item) => item.id === 'ac-daikin-ftkd18'));
+  const fridge = createHomeItem(applianceCatalog.find((item) => item.id === 'fridge-samsung-rt35'));
+  const washer = createHomeItem(applianceCatalog.find((item) => item.id === 'washer-samsung-9'));
+  const heater = createHomeItem(applianceCatalog.find((item) => item.id === 'heater-stiebel-xg45'));
+
+  assert.equal(ac.hoursPerDay, 8);
+  assert.equal(resolveEnergyInput(ac).method, 'variable_load');
+  assert.equal(resolveEnergyInput(ac).loadFactor, 0.6);
+  assert.equal(fridge.hoursPerDay, null);
+  assert.equal(resolveEnergyInput(fridge).hoursPerDay, 24);
+  assert.equal(resolveEnergyInput(fridge).loadFactor, 0.35);
+  assert.equal(washer.cyclesPerMonth, 12);
+  assert.equal(resolveEnergyInput(washer).method, 'per_cycle');
+  assert.equal(resolveEnergyInput(washer).energyPerCycleKwh, 0.8);
+  assert.equal(heater.hoursPerDay, 0.25);
+});
+
+test('selects residential tariffs by billing month and flags future fallback', () => {
+  const april = getResidentialTariff(new Date('2026-04-15T00:00:00Z'));
+  const september = getResidentialTariff(new Date('2026-09-15T00:00:00Z'));
+  const future = getResidentialTariff(new Date('2027-01-15T00:00:00Z'));
+
+  assert.equal(april.status, 'current');
+  assert.equal(april.ftRatePerKwh, 0.0972);
+  assert.deepEqual(april.tiers, [
+    { fromKwh: 0, toKwh: 150, ratePerKwh: 3.2484 },
+    { fromKwh: 150, toKwh: 400, ratePerKwh: 4.2218 },
+    { fromKwh: 400, toKwh: null, ratePerKwh: 4.4217 },
+  ]);
+  assert.equal(september.status, 'current');
+  assert.equal(september.tiers[0].toKwh, 200);
+  assert.equal(september.tiers[0].ratePerKwh, 3);
+  assert.equal(september.tiers[2].ratePerKwh, 4.3583);
+  assert.equal(future.status, 'latest_known');
+  assert.equal(future.warnings[0].code, 'tariff_ft_outdated');
+});
+
+test('calculates the official progressive bill boundaries with Ft and VAT', () => {
+  const tariff = getResidentialTariff(new Date('2026-09-15T00:00:00Z'));
+  assert.equal(calculateElectricityBill(200, tariff).total, 703.08);
+  assert.equal(calculateElectricityBill(400, tariff).total, 1627.71);
+  assert.equal(calculateElectricityBill(500, tariff).total, 2111.41);
+});
+
+test('steps values with bounds and decimal precision', () => {
+  assert.equal(adjustStepperValue(0, -0.25, { min: 0, max: 24, step: 0.25 }), 0);
+  assert.equal(adjustStepperValue(23.75, 0.25, { min: 0, max: 24, step: 0.25 }), 24);
+  assert.equal(adjustStepperValue(1.1, -0.25, { min: 0, max: 24, step: 0.25 }), 0.75);
+  assert.equal(adjustStepperValue(309, 1, { min: 0, max: 310, step: 1 }), 310);
 });

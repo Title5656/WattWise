@@ -8,8 +8,10 @@ import { WattWiseSidebar } from '../components/WattWiseSidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { NumberStepper } from '@/components/ui/number-stepper';
 import { debounce } from '@/lib/debounce';
-import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, mergeHomeItems, maxHomeApplianceQuantity, type HomeAppliance } from '@/lib/home-config';
+import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, createHomeItem, mergeHomeItems, maxHomeApplianceQuantity, type HomeAppliance } from '@/lib/home-config';
+import { getUsageProfile } from '@/lib/usage-profiles';
 
 const categories = ['ทั้งหมด', ...Array.from(new Set(catalog.map((item) => item.category)))];
 
@@ -77,12 +79,7 @@ export default function MyHomePage() {
   function addToHome(id: string) {
     const appliance = catalog.find((item) => item.id === id);
     if (!appliance) return;
-    setHomeItems((current) => addOrIncrementHomeItem(current, {
-      ...appliance,
-      instanceId: `${id}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      quantity: 1,
-      hoursPerDay: appliance.category === 'ตู้เย็น' ? 24 : 4,
-    } satisfies HomeAppliance));
+    setHomeItems((current) => addOrIncrementHomeItem(current, createHomeItem(appliance)));
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -91,8 +88,8 @@ export default function MyHomePage() {
     addToHome(event.dataTransfer.getData('text/appliance-id'));
   }
 
-  function updateItem(instanceId: string, field: 'quantity' | 'hoursPerDay', value: number) {
-    const maximum = field === 'quantity' ? maxHomeApplianceQuantity : 24;
+  function updateItem(instanceId: string, field: 'quantity' | 'hoursPerDay' | 'cyclesPerMonth', value: number) {
+    const maximum = field === 'quantity' ? maxHomeApplianceQuantity : field === 'hoursPerDay' ? 24 : 310;
     const minimum = field === 'quantity' ? 1 : 0;
     setHomeItems((current) => current.map((item) => item.instanceId === instanceId
       ? { ...item, [field]: Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum)) }
@@ -114,6 +111,13 @@ export default function MyHomePage() {
         <article><i><Zap aria-hidden="true" /></i><span><small>พลังงานต่อเดือน</small><strong>{formatNumber(summary.monthlyKwh, 1)}</strong><em>kWh</em></span></article>
         <article className="bill"><i><Banknote aria-hidden="true" /></i><span><small>ค่าไฟโดยประมาณ</small><strong>{formatNumber(summary.monthlyBill)}</strong><em>บาท / เดือน</em></span></article>
         <article><i><Gauge aria-hidden="true" /></i><span><small>พลังงานเฉลี่ยต่อวัน</small><strong>{formatNumber(summary.dailyKwh, 1)}</strong><em>kWh</em></span></article>
+      </section>
+      <section className="builder-bill-breakdown" aria-label="รายละเอียดค่าไฟ"><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'}{summary.bill.tariffStatus === 'latest_known' ? ' · ใช้ข้อมูลล่าสุดที่ทราบ' : ''}</p>
+        <span><small>ค่าไฟฐาน</small><b>{formatNumber(summary.bill.energyCharge, 2)} ฿</b></span>
+        <span><small>ค่าบริการ</small><b>{formatNumber(summary.bill.serviceCharge, 2)} ฿</b></span>
+        <span><small>Ft</small><b>{formatNumber(summary.bill.ftCharge, 2)} ฿</b></span>
+        <span><small>VAT</small><b>{formatNumber(summary.bill.vat, 2)} ฿</b></span>
+        <span className="builder-bill-total"><small>รวมโดยประมาณ</small><b>{formatNumber(summary.bill.total, 2)} ฿</b></span>
       </section>
 
       <section className="builder-workspace">
@@ -145,17 +149,14 @@ export default function MyHomePage() {
             {homeItems.length === 0 ? <div className="builder-empty"><i><Plus aria-hidden="true" /></i><h3>เริ่มสร้างบ้านพลังงานของคุณ</h3><p>ลากเครื่องใช้ไฟฟ้าจากรายการด้านซ้ายมาวาง<br />หรือกดเครื่องหมายบวกบนการ์ด</p><span>ข้อมูลจะคำนวณใหม่แบบทันที</span></div>
               : <div className="builder-home-list">{homeItems.map((item) => {
                 const kwh = itemEnergyById.get(item.instanceId) ?? 0;
+                const profile = getUsageProfile(item.usageProfileId);
                 return <Card className="builder-home-item" key={item.instanceId}>
-                  <div className="builder-home-image"><Image src={item.image} alt="" width={88} height={88} /></div>
-                  <div className="builder-item-name"><span>{item.brand}</span><b>{item.name}</b><small>{item.model}</small></div>
-                  <label>จำนวน<Input type="number" min="1" max="20" value={item.quantity} onChange={(event) => updateItem(item.instanceId, 'quantity', Number(event.target.value))} /></label>
-                  <label>ชม. / วัน<Input type="number" min="0" max="24" step="0.5" value={item.hoursPerDay} onChange={(event) => updateItem(item.instanceId, 'hoursPerDay', Number(event.target.value))} /></label>
-                  <div className="builder-item-energy"><b>{formatNumber(kwh, 1)}</b><span>kWh / เดือน</span></div>
-                  <Button variant="ghost" size="icon" onClick={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} aria-label={`ลบ ${item.name}`}><Trash2 aria-hidden="true" /></Button>
+                  <div className="builder-home-item-head"><div className="builder-home-image"><Image src={item.image} alt="" width={88} height={88} /></div><div className="builder-item-name"><span>{item.brand}</span><b>{item.name}</b><small>{item.model}</small><em>{profile.description}</em></div><Button variant="ghost" size="icon" onClick={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} aria-label={`ลบ ${item.name}`}><Trash2 aria-hidden="true" /></Button></div>
+                  <div className="builder-home-item-controls"><NumberStepper label="จำนวน" unit="เครื่อง" value={item.quantity} min={1} max={maxHomeApplianceQuantity} step={1} onChange={(value) => updateItem(item.instanceId, 'quantity', value)} />{profile.inputKind === 'hours' && <NumberStepper label="ชม. / วัน" unit="ชม." value={item.hoursPerDay ?? profile.defaultHoursPerDay ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'hoursPerDay', value)} />}{profile.inputKind === 'cycles' && <NumberStepper label="รอบ / เดือน" unit="รอบ" value={item.cyclesPerMonth ?? profile.defaultCyclesPerMonth ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'cyclesPerMonth', value)} />}{profile.inputKind === 'fixed' && <div className="builder-fixed-usage"><b>24 ชม. / วัน</b><span>คิดตาม duty cycle</span></div>}<div className="builder-item-energy"><b>{formatNumber(kwh, 1)}</b><span>kWh / เดือน</span></div></div>
                 </Card>;
               })}</div>}
           </div>
-          <footer className="builder-method"><i><Info aria-hidden="true" /></i><p><b>วิธีคำนวณเบื้องต้น</b><span>กำลังไฟ × จำนวน × ชั่วโมงใช้งาน × 30 วัน โดยใช้อัตราเฉลี่ยชั่วคราว 4.18 บาท/kWh</span></p></footer>
+          <footer className="builder-method"><i><Info aria-hidden="true" /></i><p><b>วิธีคำนวณประมาณการ</b><span>เลือกสูตรตามชนิดอุปกรณ์ ใช้ค่า profile มาตรฐาน และคิดค่าไฟตาม tariff บ้านอยู่อาศัยที่มีผลในเดือนนี้</span></p></footer>
         </section>
       </section>
     </section>

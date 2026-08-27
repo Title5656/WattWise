@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:workers';
 import { applianceCatalog, calculateHomeSummary, hydrateHomeItem, type HomeAppliance } from '@/lib/home-config';
+import { getUsageProfile } from '@/lib/usage-profiles';
 
 const householdKey = 'default-home';
 
-type SavedRow = { id: number; appliance_key: string; quantity: number; hours_per_day: number };
+type SavedRow = { id: number; appliance_key: string; quantity: number; hours_per_day: number; cycles_per_month: number | null };
 
 function getDb() {
   if (!env.DB) throw new Error('D1 binding DB is unavailable');
@@ -13,13 +14,14 @@ function getDb() {
 async function readItems() {
   const db = getDb();
   const result = await db.prepare(
-    'SELECT id, appliance_key, quantity, hours_per_day FROM saved_home_appliances WHERE household_key = ? ORDER BY position, id',
+    'SELECT id, appliance_key, quantity, hours_per_day, cycles_per_month FROM saved_home_appliances WHERE household_key = ? ORDER BY position, id',
   ).bind(householdKey).all<SavedRow>();
   return result.results.map((row) => hydrateHomeItem({
     id: row.id,
     applianceKey: row.appliance_key,
     quantity: row.quantity,
     hoursPerDay: row.hours_per_day,
+    cyclesPerMonth: row.cycles_per_month,
   })).filter((item): item is HomeAppliance => item !== null);
 }
 
@@ -43,10 +45,18 @@ async function save(request: Request) {
     const items = body.items.map((item) => {
       const appliance = applianceCatalog.find((entry) => entry.id === item.id);
       if (!appliance) return null;
+      const profile = getUsageProfile(appliance.usageProfileId);
+      const rawHours = Number(item.hoursPerDay);
+      const rawCycles = Number(item.cyclesPerMonth);
       return {
         applianceKey: appliance.id,
         quantity: Math.max(1, Math.min(20, Math.round(Number(item.quantity) || 1))),
-        hoursPerDay: Math.max(0, Math.min(24, Number(item.hoursPerDay) || 0)),
+        hoursPerDay: profile.inputKind === 'hours'
+          ? Math.max(0, Math.min(24, Number.isFinite(rawHours) ? rawHours : profile.defaultHoursPerDay ?? 0))
+          : 0,
+        cyclesPerMonth: profile.inputKind === 'cycles'
+          ? Math.max(0, Math.min(310, Number.isFinite(rawCycles) ? rawCycles : profile.defaultCyclesPerMonth ?? 0))
+          : null,
       };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 
@@ -55,8 +65,8 @@ async function save(request: Request) {
     const statements = [
       db.prepare('DELETE FROM saved_home_appliances WHERE household_key = ?').bind(householdKey),
       ...items.map((item, position) => db.prepare(
-        'INSERT INTO saved_home_appliances (household_key, appliance_key, quantity, hours_per_day, position, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-      ).bind(householdKey, item.applianceKey, item.quantity, item.hoursPerDay, position, now)),
+        'INSERT INTO saved_home_appliances (household_key, appliance_key, quantity, hours_per_day, cycles_per_month, position, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).bind(householdKey, item.applianceKey, item.quantity, item.hoursPerDay, item.cyclesPerMonth, position, now)),
     ];
     await db.batch(statements);
     const savedItems = await readItems();
