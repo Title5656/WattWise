@@ -32,6 +32,38 @@ export const applianceCatalog: Appliance[] = [
 ];
 
 export const averageTariffPerKwh = 4.18;
+export const maxHomeApplianceQuantity = 20;
+
+export function addOrIncrementHomeItem(items: HomeAppliance[], item: HomeAppliance): HomeAppliance[] {
+  const existingIndex = items.findIndex((entry) => entry.id === item.id);
+  if (existingIndex === -1) return [...items, item];
+
+  return items.map((entry, index) => index === existingIndex
+    ? { ...entry, quantity: Math.min(maxHomeApplianceQuantity, entry.quantity + 1) }
+    : entry);
+}
+
+export function mergeHomeItems(items: HomeAppliance[]): HomeAppliance[] {
+  const merged: HomeAppliance[] = [];
+  const indexByApplianceId = new Map<string, number>();
+
+  for (const item of items) {
+    const existingIndex = indexByApplianceId.get(item.id);
+    if (existingIndex === undefined) {
+      indexByApplianceId.set(item.id, merged.length);
+      merged.push(item);
+      continue;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...existing,
+      quantity: Math.min(maxHomeApplianceQuantity, existing.quantity + item.quantity),
+    };
+  }
+
+  return merged;
+}
 
 export function calculateHomeSummary(items: HomeAppliance[]) {
   const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);

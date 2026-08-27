@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { debounce } from '@/lib/debounce';
-import { applianceCatalog as catalog, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
+import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, mergeHomeItems, maxHomeApplianceQuantity, type HomeAppliance } from '@/lib/home-config';
 
 const categories = ['ทั้งหมด', ...Array.from(new Set(catalog.map((item) => item.category)))];
 
@@ -36,7 +36,7 @@ export default function MyHomePage() {
       })
       .then((data) => {
         if (cancelled) return;
-        setHomeItems(data.items);
+        setHomeItems(mergeHomeItems(data.items));
         setReady(true);
         setSaveState('saved');
       })
@@ -73,12 +73,12 @@ export default function MyHomePage() {
   function addToHome(id: string) {
     const appliance = catalog.find((item) => item.id === id);
     if (!appliance) return;
-    setHomeItems((current) => [...current, {
+    setHomeItems((current) => addOrIncrementHomeItem(current, {
       ...appliance,
       instanceId: `${id}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       quantity: 1,
       hoursPerDay: appliance.category === 'ตู้เย็น' ? 24 : 4,
-    }]);
+    } satisfies HomeAppliance));
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -88,7 +88,7 @@ export default function MyHomePage() {
   }
 
   function updateItem(instanceId: string, field: 'quantity' | 'hoursPerDay', value: number) {
-    const maximum = field === 'quantity' ? 20 : 24;
+    const maximum = field === 'quantity' ? maxHomeApplianceQuantity : 24;
     const minimum = field === 'quantity' ? 1 : 0;
     setHomeItems((current) => current.map((item) => item.instanceId === instanceId
       ? { ...item, [field]: Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum)) }
