@@ -77,8 +77,8 @@ export default function Home() {
 
     <section className="dashboard-content" id="overview">
       <header className="dashboard-header">
-        <div><p className="kicker">ภาพรวมพลังงาน</p><h1>สวัสดีตอนเย็น, วรปรัชญ์</h1><span>{homeLoading ? 'กำลังเชื่อมข้อมูล My Home...' : `อัปเดตจาก My Home · ${summary.totalUnits} เครื่อง`}</span></div>
-        <div className="header-actions"><Button variant="ghost" size="icon" className="notify" aria-label="การแจ้งเตือน"><Bell aria-hidden="true" /><i /></Button><Button variant="ghost" className="profile"><i>WP</i><span><b>บ้านวรปรัชญ์</b><small>เจ้าของบ้าน</small></span></Button></div>
+        <div><p className="kicker">ภาพรวมพลังงาน</p><h1>สวัสดีคุณวิทวัส</h1><span>{homeLoading ? 'กำลังเชื่อมข้อมูล My Home...' : `อัปเดตจาก My Home · ${summary.totalUnits} เครื่อง`}</span></div>
+        <div className="header-actions"><Button variant="ghost" size="icon" className="notify" aria-label="การแจ้งเตือน"><Bell aria-hidden="true" /><i /></Button><Button variant="ghost" className="profile"><i>WP</i><span><b>บ้านวิทวัส</b><small>เจ้าของบ้าน</small></span></Button></div>
       </header>
 
       <section className="system-banner"><div className="pulse"><i /></div><div><b>{homeLoading ? 'กำลังโหลดข้อมูลบ้าน' : homeItems.length ? 'เชื่อมข้อมูล My Home แล้ว' : 'เริ่มเพิ่มอุปกรณ์ใน My Home'}</b><p>{homeItems.length ? 'โหลด พลังงาน และค่าไฟคำนวณจากอุปกรณ์ที่บันทึกไว้' : 'ยังไม่มีอุปกรณ์ในบ้านจำลอง · ไปที่ My Home เพื่อเริ่มต้น'}</p></div><span><i /> SYNC</span></section>

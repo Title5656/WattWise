@@ -39,7 +39,7 @@ export function WattWiseSidebar({ active }: { active: ActivePage }) {
           <i><Icon aria-hidden="true" /></i><span><b>{link.label}</b><small>{link.detail}</small></span>{link.badge ? <em>{link.badge}</em> : null}
         </Link>;})}
       </nav>
-      <div className="sidebar-account" id="profile"><i>WP</i><span><b>วรปรัชญ์</b><small>บ้านของฉัน · ออนไลน์</small></span><Button variant="ghost" size="icon" aria-label="เปิดโปรไฟล์"><ChevronRight aria-hidden="true" /></Button></div>
+      <div className="sidebar-account" id="profile"><i>WP</i><span><b>วิทวัส</b><small>บ้านของฉัน · ออนไลน์</small></span><Button variant="ghost" size="icon" aria-label="เปิดโปรไฟล์"><ChevronRight aria-hidden="true" /></Button></div>
     </aside>
   </>;
 }
