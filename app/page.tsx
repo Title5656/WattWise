@@ -1,12 +1,13 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Banknote, Bell, ChevronRight, ExternalLink, Gauge, Plus, Sparkles, Target, Zap } from 'lucide-react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { ArrowRight, Banknote, Bell, ChevronRight, Gauge, Pencil, Plus, Sparkles, Target, Trash2, X, Zap } from 'lucide-react';
 import { WattWiseSidebar } from './components/WattWiseSidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
+import { formatBillingMonthLabel, getBillingMonth, selectRecentRecords, type MonthlyEnergyRecord } from '@/lib/monthly-history';
 
 const chartData = {
   day: [1.4, 1.2, 1.1, 1.3, 1.9, 2.7, 3.4, 2.9, 2.4, 3.1, 3.7, 3.24],
@@ -23,6 +24,14 @@ export default function Home() {
   const [period, setPeriod] = useState<Period>('day');
   const [homeItems, setHomeItems] = useState<HomeAppliance[]>([]);
   const [homeLoading, setHomeLoading] = useState(true);
+  const [history, setHistory] = useState<MonthlyEnergyRecord[]>([]);
+  const [billFormOpen, setBillFormOpen] = useState(false);
+  const [billMonth, setBillMonth] = useState(() => getBillingMonth());
+  const [actualBill, setActualBill] = useState('');
+  const [actualKwh, setActualKwh] = useState('');
+  const [billEditingMonth, setBillEditingMonth] = useState<string | null>(null);
+  const [billError, setBillError] = useState('');
+  const [billSaving, setBillSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -30,8 +39,11 @@ export default function Home() {
       try {
         const response = await fetch('/api/home', { cache: 'no-store' });
         if (!response.ok) throw new Error('load failed');
-        const data = await response.json() as { items: HomeAppliance[] };
-        if (active) setHomeItems(data.items);
+         const data = await response.json() as { items: HomeAppliance[]; history?: MonthlyEnergyRecord[] };
+         if (active) {
+           setHomeItems(data.items);
+           setHistory(data.history ?? []);
+         }
       } finally {
         if (active) setHomeLoading(false);
       }
@@ -65,13 +77,62 @@ export default function Home() {
     { icon: Gauge, label: 'พลังงานต่อวัน', note: 'จากชั่วโมงใช้งานที่กำหนด', value: formatNumber(summary.dailyKwh, 1), unit: 'kWh', trend: formatNumber(summary.monthlyKwh, 1), compare: 'kWh ต่อเดือน', tone: 'blue', bars: [2,4,3,6,5,8,6,7] },
     { icon: Banknote, label: 'ค่าไฟประมาณการ', note: summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป', value: formatNumber(summary.monthlyBill), unit: 'บาท', trend: formatNumber(summary.monthlyKwh, 1), compare: 'หน่วยต่อเดือน', tone: 'amber', bars: [3,2,4,3,5,6,7,8] },
   ];
-  const monthlyBills = [0.82, 0.91, 1.08, 0.99, 0.94, 1].map((ratio, index) => ({ month: ['มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.'][index], value: summary.monthlyBill * ratio }));
-  const monthlyPeak = Math.max(...monthlyBills.map((bill) => bill.value), 1);
+  const monthlyBills = useMemo(() => selectRecentRecords(history), [history]);
+  const monthlyPeak = Math.max(...monthlyBills.flatMap((bill) => [bill.estimatedBill ?? 0, bill.actualBill ?? 0]), 1);
   const topDevices = [...homeItems].sort((a, b) => (itemEnergyById.get(b.instanceId) ?? 0) - (itemEnergyById.get(a.instanceId) ?? 0)).slice(0, 4).map((item, index) => {
     const monthlyKwh = itemEnergyById.get(item.instanceId) ?? 0;
     const share = summary.monthlyKwh > 0 ? monthlyKwh / summary.monthlyKwh * 100 : 0;
     return { image: item.image, name: item.name, detail: `${item.brand} · ${item.model} · ${item.quantity} เครื่อง`, energy: `${formatNumber(monthlyKwh, 1)} kWh`, share: `${formatNumber(share)}% ของทั้งเดือน`, width: share, tone: ['blue', 'amber', 'lime', 'violet'][index] };
   });
+
+  function openBillForm(record?: MonthlyEnergyRecord) {
+    setBillEditingMonth(record?.billingMonth ?? null);
+    setBillMonth(record?.billingMonth ?? getBillingMonth());
+    setActualBill(record?.actualBill === null || record?.actualBill === undefined ? '' : String(record.actualBill));
+    setActualKwh(record?.actualKwh === null || record?.actualKwh === undefined ? '' : String(record.actualKwh));
+    setBillError('');
+    setBillFormOpen(true);
+  }
+
+  function closeBillForm() {
+    if (billSaving) return;
+    setBillFormOpen(false);
+    setBillError('');
+  }
+
+  async function saveBill(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBillSaving(true);
+    setBillError('');
+    try {
+      const response = await fetch('/api/bills', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: billMonth, actualBill, actualKwh }),
+      });
+      const data = await response.json() as { records?: MonthlyEnergyRecord[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? 'บันทึกบิลจริงไม่สำเร็จ');
+      setHistory(data.records ?? []);
+      setBillFormOpen(false);
+    } catch (error) {
+      setBillError(error instanceof Error ? error.message : 'บันทึกบิลจริงไม่สำเร็จ');
+    } finally {
+      setBillSaving(false);
+    }
+  }
+
+  async function deleteBill(month: string) {
+    if (!window.confirm(`ลบบิลจริงของเดือน ${month} ใช่หรือไม่?`)) return;
+    setBillError('');
+    try {
+      const response = await fetch(`/api/bills?month=${encodeURIComponent(month)}`, { method: 'DELETE' });
+      const data = await response.json() as { records?: MonthlyEnergyRecord[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? 'ลบบิลจริงไม่สำเร็จ');
+      setHistory(data.records ?? []);
+    } catch (error) {
+      setBillError(error instanceof Error ? error.message : 'ลบบิลจริงไม่สำเร็จ');
+    }
+  }
 
   return <main className="dashboard-shell">
     <WattWiseSidebar active="status" />
@@ -108,11 +169,26 @@ export default function Home() {
 
       <section className="overview-grid" id="monthly">
         <Card className="bill-card">
-          <header className="section-heading"><div><p className="kicker">6 MONTH OVERVIEW</p><h2>ค่าไฟย้อนหลัง</h2><span>แนวโน้มค่าใช้จ่ายรายเดือนของบ้าน</span></div><Button variant="ghost">ดูรายละเอียด <ExternalLink aria-hidden="true" /></Button></header>
+          <header className="section-heading"><div><p className="kicker">MONTHLY BILL HISTORY</p><h2>ค่าไฟรายเดือน</h2><span>เปรียบเทียบค่าประมาณกับบิลจริงที่บันทึกไว้</span></div><Button variant="ghost" onClick={() => openBillForm()}>{billFormOpen ? 'ปิดฟอร์ม' : 'เพิ่มบิลจริง'} {billFormOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}</Button></header>
           <div className="bill-highlight"><span>ประมาณการเดือนนี้</span><strong>฿{formatNumber(summary.monthlyBill)}</strong><p><b>{formatNumber(summary.monthlyKwh, 1)} kWh</b> จาก My Home</p></div>
-          <div className="monthly-chart" aria-label="ค่าไฟย้อนหลังหกเดือน">
-            {monthlyBills.map((bill) => <div key={bill.month}><em>฿{formatNumber(bill.value)}</em><i style={{height: `${(bill.value / monthlyPeak) * 100}%`}} className={bill.month === 'ส.ค.' ? 'current' : ''} /><small>{bill.month}</small></div>)}
+          {billFormOpen && <form className="bill-form" onSubmit={saveBill}>
+            <div className="bill-form-header"><b>{billEditingMonth ? 'แก้ไขบิลจริง' : 'เพิ่มบิลจริง'}</b><Button type="button" variant="ghost" size="icon" aria-label="ปิดฟอร์ม" onClick={closeBillForm}><X aria-hidden="true" /></Button></div>
+            <label>เดือน<input type="month" value={billMonth} max={getBillingMonth()} onChange={(event) => setBillMonth(event.target.value)} disabled={Boolean(billEditingMonth)} required /></label>
+            <label>ยอดบิลจริง (บาท)<input type="number" min="0" step="0.01" value={actualBill} onChange={(event) => setActualBill(event.target.value)} placeholder="เช่น 512.50" required /></label>
+            <label>ใช้ไฟจริง (kWh) <small>ไม่บังคับ</small><input type="number" min="0" step="0.01" value={actualKwh} onChange={(event) => setActualKwh(event.target.value)} placeholder="เช่น 120" /></label>
+            {billError && <p className="bill-form-error" role="alert">{billError}</p>}
+            <div className="bill-form-actions"><Button type="button" variant="ghost" onClick={closeBillForm}>ยกเลิก</Button><Button type="submit" disabled={billSaving}>{billSaving ? 'กำลังบันทึก...' : 'บันทึกบิลจริง'}</Button></div>
+          </form>}
+          <div className="bill-legend"><span><i className="estimate" />ค่าประมาณ</span><span><i className="actual" />บิลจริง</span></div>
+          <div className="monthly-chart" aria-label="กราฟเปรียบเทียบค่าประมาณและบิลจริงรายเดือน">
+            {monthlyBills.length ? monthlyBills.map((bill) => <div className="monthly-column" key={bill.billingMonth}>
+              <em>{bill.actualBill === null ? `ประมาณ ฿${formatNumber(bill.estimatedBill ?? 0)}` : `จริง ฿${formatNumber(bill.actualBill)}`}</em>
+              <div className="monthly-bars">{bill.estimatedBill !== null && <i className="estimate" style={{ height: `${(bill.estimatedBill / monthlyPeak) * 100}%` }} />}{bill.actualBill !== null && <i className="actual" style={{ height: `${(bill.actualBill / monthlyPeak) * 100}%` }} />}</div>
+              <small>{formatBillingMonthLabel(bill.billingMonth)}</small>
+              <div className="monthly-record-actions"><Button type="button" variant="ghost" size="icon" aria-label={`แก้ไขบิล ${bill.billingMonth}`} onClick={() => openBillForm(bill)}><Pencil aria-hidden="true" /></Button>{bill.actualBill !== null && <Button type="button" variant="ghost" size="icon" aria-label={`ลบบิล ${bill.billingMonth}`} onClick={() => deleteBill(bill.billingMonth)}><Trash2 aria-hidden="true" /></Button>}</div>
+            </div>) : <div className="monthly-empty">ยังไม่มีข้อมูลรายเดือนที่บันทึกไว้</div>}
           </div>
+          {billError && !billFormOpen && <p className="bill-form-error" role="alert">{billError}</p>}
         </Card>
 
         <Card className="devices-card" id="devices">

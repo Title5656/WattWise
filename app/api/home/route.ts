@@ -1,10 +1,9 @@
 import { env } from 'cloudflare:workers';
-import { applianceCatalog, calculateHomeSummary, hydrateHomeItem, type HomeAppliance } from '@/lib/home-config';
+import { applianceCatalog, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
+import { householdKey, readSavedHomeItems } from '@/lib/home-storage';
+import { getBillingMonth, selectRecentRecords } from '@/lib/monthly-history';
+import { readMonthlyEnergyRecords, upsertMonthlyEstimate } from '@/lib/monthly-history-db';
 import { getUsageProfile } from '@/lib/usage-profiles';
-
-const householdKey = 'default-home';
-
-type SavedRow = { id: number; appliance_key: string; quantity: number; hours_per_day: number; cycles_per_month: number | null };
 
 function getDb() {
   if (!env.DB) throw new Error('D1 binding DB is unavailable');
@@ -12,23 +11,22 @@ function getDb() {
 }
 
 async function readItems() {
+  return readSavedHomeItems(getDb());
+}
+
+async function readResponse(items: HomeAppliance[], now = Date.now()) {
   const db = getDb();
-  const result = await db.prepare(
-    'SELECT id, appliance_key, quantity, hours_per_day, cycles_per_month FROM saved_home_appliances WHERE household_key = ? ORDER BY position, id',
-  ).bind(householdKey).all<SavedRow>();
-  return result.results.map((row) => hydrateHomeItem({
-    id: row.id,
-    applianceKey: row.appliance_key,
-    quantity: row.quantity,
-    hoursPerDay: row.hours_per_day,
-    cyclesPerMonth: row.cycles_per_month,
-  })).filter((item): item is HomeAppliance => item !== null);
+  const summary = calculateHomeSummary(items, new Date(now));
+  if (items.length > 0) {
+    await upsertMonthlyEstimate(db, householdKey, getBillingMonth(new Date(now)), summary, now);
+  }
+  return { items, summary, history: selectRecentRecords(await readMonthlyEnergyRecords(db, householdKey)) };
 }
 
 export async function GET() {
   try {
     const items = await readItems();
-    return Response.json({ items, summary: calculateHomeSummary(items) });
+    return Response.json(await readResponse(items));
   } catch (error) {
     console.error('Unable to read home configuration', error);
     return Response.json({ error: 'ไม่สามารถโหลดข้อมูลบ้านได้' }, { status: 500 });
@@ -70,7 +68,7 @@ async function save(request: Request) {
     ];
     await db.batch(statements);
     const savedItems = await readItems();
-    return Response.json({ items: savedItems, summary: calculateHomeSummary(savedItems), savedAt: now });
+    return Response.json({ ...(await readResponse(savedItems, now)), savedAt: now });
   } catch (error) {
     console.error('Unable to save home configuration', error);
     return Response.json({ error: 'ไม่สามารถบันทึกข้อมูลบ้านได้' }, { status: 500 });
