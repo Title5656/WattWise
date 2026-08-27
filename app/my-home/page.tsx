@@ -99,7 +99,6 @@ export default function MyHomePage() {
   }
 
   return <main className="dashboard-shell my-home-shell">
-    <div className="meteor-field" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <i key={index} />)}</div>
     <WattWiseSidebar active="home" />
 
     <section className="my-home-content">

@@ -74,9 +74,6 @@ export default function Home() {
   });
 
   return <main className="dashboard-shell">
-    <div className="meteor-field" aria-hidden="true">
-      {Array.from({ length: 14 }, (_, index) => <i key={index} />)}
-    </div>
     <WattWiseSidebar active="status" />
 
     <section className="dashboard-content" id="overview">
