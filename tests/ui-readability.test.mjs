@@ -60,3 +60,23 @@ test('mobile My Home keeps the heading full width and groups summary units with 
   assert.match(styles, /@media\s*\(max-width:\s*700px\)[^{]*\{[\s\S]*\.builder-header\s*\{[^}]*flex-direction:\s*column/);
   assert.match(styles, /\.builder-summary article>span\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/);
 });
+
+test('interactive controls keep a 44px touch target', async () => {
+  const styles = await readStyles();
+  const selectors = [
+    '.builder-tabs button',
+    '.period-switch button',
+    '.monthly-record-actions button',
+    '.bill-form-header button',
+    '.mobile-sidebar-toggle',
+    '.sidebar-close',
+    '.notify',
+    '.home-status button',
+    '.sidebar-account button',
+    '.insight-action',
+  ];
+
+  for (const selector of selectors) {
+    assert.match(latestRule(styles, selector), /min-height\s*:\s*44px/, selector);
+  }
+});

@@ -256,3 +256,15 @@ body{background:#eef3ef;color:var(--text);font-weight:400;letter-spacing:-.005em
 @media (max-width:700px){
   .builder-header{flex-direction:column}
 }
+
+/* All visible controls remain comfortable to tap at every breakpoint. */
+.builder-tabs button{min-height:44px}
+.period-switch button{min-height:44px}
+.monthly-record-actions button{width:44px;height:44px;min-height:44px}
+.bill-form-header button{width:44px;height:44px;min-height:44px}
+.mobile-sidebar-toggle{width:44px;height:44px;min-height:44px}
+.sidebar-close{width:44px;height:44px;min-height:44px}
+.notify{width:44px;height:44px;min-height:44px}
+.home-status button{min-width:44px;min-height:44px}
+.sidebar-account button{min-width:44px;min-height:44px}
+.insight-action{min-height:44px;font-size:var(--text-caption)}
