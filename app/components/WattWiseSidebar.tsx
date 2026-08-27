@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState } from 'react';
 import { ChevronRight, House, LayoutDashboard, Menu, Settings, UserRound, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,7 @@ export function WattWiseSidebar({ active }: { active: ActivePage }) {
     <Button variant="ghost" className={`sidebar-scrim ${open ? 'show' : ''}`} onClick={() => setOpen(false)} aria-label="ปิดเมนู" />
     <aside className={`sidebar ${open ? 'mobile-open' : ''}`}>
       <div className="sidebar-top">
-        <Link className="brand" href="/#overview" onClick={() => setOpen(false)}><span className="brand-mark">W</span><span><b>WattWise</b><small>HOME ENERGY</small></span></Link>
+        <Link className="brand" href="/#overview" onClick={() => setOpen(false)}><span className="brand-mark"><Image src="/wattwise-logo.png" alt="WattWise" width={40} height={40} priority /></span><span><b>WattWise</b><small>HOME ENERGY</small></span></Link>
         <Button variant="ghost" size="icon" className="sidebar-close" onClick={() => setOpen(false)} aria-label="ปิดเมนู"><X aria-hidden="true" /></Button>
       </div>
       <nav className="side-nav" aria-label="เมนูหลัก">
