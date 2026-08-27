@@ -43,7 +43,7 @@ jobs:
         run: npm run build
 
       - name: Upload production build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wattwise-dist-${{ github.sha }}
           path: dist
@@ -70,7 +70,7 @@ jobs:
         run: npm ci
 
       - name: Download validated production build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: wattwise-dist-${{ github.sha }}
           path: dist
