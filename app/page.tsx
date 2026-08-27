@@ -48,6 +48,10 @@ export default function Home() {
   }, []);
 
   const summary = useMemo(() => calculateHomeSummary(homeItems), [homeItems]);
+  const itemEnergyById = useMemo(() => new Map(summary.itemCalculations.map((item) => [
+    item.instanceId,
+    item.calculation.monthlyEnergyKwh,
+  ])), [summary.itemCalculations]);
   const values = useMemo(() => {
     const scale = summary.ratedLoadKw > 0 ? summary.ratedLoadKw / 3.24 : 0;
     return chartData[period].map((value) => value * scale);
@@ -63,10 +67,10 @@ export default function Home() {
   ];
   const monthlyBills = [0.82, 0.91, 1.08, 0.99, 0.94, 1].map((ratio, index) => ({ month: ['มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.'][index], value: summary.monthlyBill * ratio }));
   const monthlyPeak = Math.max(...monthlyBills.map((bill) => bill.value), 1);
-  const topDevices = [...homeItems].sort((a, b) => b.watts * b.quantity - a.watts * a.quantity).slice(0, 4).map((item, index) => {
-    const watts = item.watts * item.quantity;
-    const share = summary.ratedLoadKw > 0 ? watts / (summary.ratedLoadKw * 1000) * 100 : 0;
-    return { image: item.image, name: item.name, detail: `${item.brand} · ${item.model} · ${item.quantity} เครื่อง`, watts: `${formatNumber(watts / 1000, 2)} kW`, share: `${formatNumber(share)}% ของทั้งหมด`, width: share, tone: ['blue', 'amber', 'lime', 'violet'][index] };
+  const topDevices = [...homeItems].sort((a, b) => (itemEnergyById.get(b.instanceId) ?? 0) - (itemEnergyById.get(a.instanceId) ?? 0)).slice(0, 4).map((item, index) => {
+    const monthlyKwh = itemEnergyById.get(item.instanceId) ?? 0;
+    const share = summary.monthlyKwh > 0 ? monthlyKwh / summary.monthlyKwh * 100 : 0;
+    return { image: item.image, name: item.name, detail: `${item.brand} · ${item.model} · ${item.quantity} เครื่อง`, energy: `${formatNumber(monthlyKwh, 1)} kWh`, share: `${formatNumber(share)}% ของทั้งเดือน`, width: share, tone: ['blue', 'amber', 'lime', 'violet'][index] };
   });
 
   return <main className="dashboard-shell">
@@ -115,9 +119,9 @@ export default function Home() {
         </Card>
 
         <Card className="devices-card" id="devices">
-          <header className="section-heading"><div><p className="kicker">TOP CONSUMPTION</p><h2>อุปกรณ์ที่ใช้ไฟสูงสุด</h2><span>เรียงตามโหลดปัจจุบัน</span></div><Button variant="ghost" aria-label="ดูอุปกรณ์ทั้งหมด">ทั้งหมด <ChevronRight aria-hidden="true" /></Button></header>
+          <header className="section-heading"><div><p className="kicker">TOP CONSUMPTION</p><h2>อุปกรณ์ที่ใช้ไฟสูงสุด</h2><span>เรียงตามพลังงานต่อเดือน</span></div><Button variant="ghost" aria-label="ดูอุปกรณ์ทั้งหมด">ทั้งหมด <ChevronRight aria-hidden="true" /></Button></header>
           <div className="device-list">{topDevices.length ? topDevices.map((device, index) => <div className={`device-row ${device.tone}`} key={`${device.name}-${index}`}>
-            <div className="device-product-thumb"><Image src={device.image} alt="" width={72} height={72} /></div><div className="device-copy"><b>{device.name}</b><small>{device.detail}</small><span><i style={{width: `${device.width}%`}} /></span></div><div className="device-usage"><b>{device.watts}</b><small>{device.share}</small></div>
+            <div className="device-product-thumb"><Image src={device.image} alt="" width={72} height={72} /></div><div className="device-copy"><b>{device.name}</b><small>{device.detail}</small><span><i style={{width: `${device.width}%`}} /></span></div><div className="device-usage"><b>{device.energy}</b><small>{device.share}</small></div>
           </div>) : <div className="device-empty"><i><Plus aria-hidden="true" /></i><div><b>ยังไม่มีเครื่องใช้ไฟฟ้า</b><span>เพิ่มอุปกรณ์ใน My Home แล้วข้อมูลจะปรากฏที่นี่</span></div><Button asChild variant="link"><a href="/my-home">ไปที่ My Home <ChevronRight aria-hidden="true" /></a></Button></div>}</div>
         </Card>
       </section>

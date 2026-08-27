@@ -69,6 +69,10 @@ export default function MyHomePage() {
   }), [category, query]);
 
   const summary = calculateHomeSummary(homeItems);
+  const itemEnergyById = new Map(summary.itemCalculations.map((item) => [
+    item.instanceId,
+    item.calculation.monthlyEnergyKwh,
+  ]));
 
   function addToHome(id: string) {
     const appliance = catalog.find((item) => item.id === id);
@@ -140,7 +144,7 @@ export default function MyHomePage() {
           >
             {homeItems.length === 0 ? <div className="builder-empty"><i><Plus aria-hidden="true" /></i><h3>เริ่มสร้างบ้านพลังงานของคุณ</h3><p>ลากเครื่องใช้ไฟฟ้าจากรายการด้านซ้ายมาวาง<br />หรือกดเครื่องหมายบวกบนการ์ด</p><span>ข้อมูลจะคำนวณใหม่แบบทันที</span></div>
               : <div className="builder-home-list">{homeItems.map((item) => {
-                const kwh = (item.watts * item.quantity * item.hoursPerDay * 30) / 1000;
+                const kwh = itemEnergyById.get(item.instanceId) ?? 0;
                 return <Card className="builder-home-item" key={item.instanceId}>
                   <div className="builder-home-image"><Image src={item.image} alt="" width={88} height={88} /></div>
                   <div className="builder-item-name"><span>{item.brand}</span><b>{item.name}</b><small>{item.model}</small></div>
