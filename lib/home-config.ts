@@ -41,8 +41,6 @@ export const applianceCatalog: Appliance[] = [
   { id: 'rice-sharp-com18', category: 'เครื่องใช้ในครัว', brand: 'Sharp', model: 'KS-COM18', name: 'หม้อหุงข้าวดิจิทัล', detail: '1.8 ลิตร · Fuzzy Control · ตั้งเวลาได้', watts: 830, usageProfileId: 'rice_cooker', image: '/products/sharp-ks-com18.png' },
 ];
 
-export const maxHomeApplianceQuantity = 20;
-
 export function createHomeItem(appliance: Appliance): HomeAppliance {
   const profile = getUsageProfile(appliance.usageProfileId);
   return {
@@ -69,7 +67,7 @@ export function addOrIncrementHomeItem(items: HomeAppliance[], item: HomeApplian
   if (existingIndex === -1) return [...items, item];
 
   return items.map((entry, index) => index === existingIndex
-    ? { ...entry, quantity: Math.min(maxHomeApplianceQuantity, entry.quantity + 1) }
+    ? { ...entry, quantity: entry.quantity + 1 }
     : entry);
 }
 
@@ -88,7 +86,7 @@ export function mergeHomeItems(items: HomeAppliance[]): HomeAppliance[] {
     const existing = merged[existingIndex];
     merged[existingIndex] = {
       ...existing,
-      quantity: Math.min(maxHomeApplianceQuantity, existing.quantity + item.quantity),
+      quantity: existing.quantity + item.quantity,
     };
   }
 
