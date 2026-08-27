@@ -89,3 +89,182 @@ body{background:#eef3ef;color:var(--text);font-weight:400;letter-spacing:-.005em
 .sidebar-scrim{background:#183b2966}
 .bill-legend{display:flex;gap:12px;margin-top:13px;color:#75827b;font-size:7px}.bill-legend span{display:flex;align-items:center;gap:5px}.bill-legend i{display:block;width:7px;height:7px;border-radius:2px}.bill-legend i.estimate{background:#aebbb4}.bill-legend i.actual{background:var(--amber)}.monthly-column{position:relative}.monthly-chart{height:220px}.monthly-bars{height:140px;width:100%;display:flex;align-items:end;justify-content:center;gap:3px}.monthly-bars i{display:block;width:min(30%,22px);min-height:8px;border-radius:5px 5px 2px 2px;background:linear-gradient(#aebbb4,#75827b)}.monthly-bars i.actual{background:linear-gradient(#f3bd63,#b87620)}.monthly-record-actions{display:flex;justify-content:center;gap:1px;height:25px}.monthly-record-actions button{width:22px;height:22px;padding:0;border:0;background:none;color:#75827b}.monthly-record-actions button:hover{color:var(--lime)}.monthly-record-actions svg{width:11px;height:11px}.monthly-empty{width:100%;padding:42px 0;color:#75827b;font-size:8px;text-align:center}.bill-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px;padding:12px;border:1px solid #ffffffad;border-radius:11px;background:#ffffff42}.bill-form-header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;color:#405246;font-size:9px}.bill-form-header button{width:24px;height:24px;padding:0;border:0;background:none;color:#75827b}.bill-form label{display:flex;flex-direction:column;gap:4px;color:#687970;font-size:7px}.bill-form label small{color:#8a9690;font-size:6px}.bill-form input{width:100%;padding:7px 8px;border:1px solid #ffffffc4;border-radius:7px;outline:0;background:#ffffff61;color:#26382f;font-size:9px}.bill-form input:focus{border-color:#8cb23b}.bill-form input:disabled{opacity:.6}.bill-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:6px}.bill-form-actions button{padding:7px 10px;border-radius:7px;font-size:8px}.bill-form-error{margin:9px 0 0;color:#c35f50;font-size:8px}.bill-form .bill-form-error{grid-column:1/-1;margin:0}
 @media(max-width:700px){.bill-form{grid-template-columns:1fr}.bill-form-actions{justify-content:stretch}.bill-form-actions button{flex:1}.monthly-bars{height:125px}.monthly-bars i{width:18px}}
+
+/* Readability scale: keep product information legible without changing the visual language. */
+:root{--text-caption:12px;--text-body:14px;--text-label:15px;--text-section:18px;--text-value:clamp(32px,3vw,44px)}
+.brand small,.side-nav p,.home-status small,.kicker,.profile small,.system-banner p,.system-banner>span,.metric-title small,.metric-value span,.trend,.budget p,.load-card header>div:first-child>span,.period-switch button,.load-summary>span,.load-summary small,.bar-column small,.bar-column em,.section-heading>div>span,.section-heading button,.bill-highlight>span,.bill-highlight p,.monthly-chart em,.monthly-chart small,.device-copy small,.device-usage small,.insight-card div>span,.builder-header>div>span,.builder-summary small,.builder-summary em,.builder-panel-heading>em,.builder-search input,.builder-tabs button,.builder-product-copy>span,.builder-product-copy>em,.builder-product-copy>small,.builder-appliance>strong small,.builder-item-name span,.builder-item-name small,.builder-item-name em,.builder-home-item label,.builder-item-energy span,.builder-method span,.builder-bill-breakdown>p,.builder-bill-breakdown small,.save-pill,.device-empty div span,.device-empty>a,.bill-legend,.monthly-empty,.bill-form label,.bill-form label small,.bill-form input,.bill-form-actions button,.bill-form-error{font-size:var(--text-caption)}
+.side-nav a b,.home-status b,.profile b,.system-banner b,.metric-title b,.metric-value span,.load-summary b,.device-copy b,.device-usage b,.builder-product-copy>b,.builder-appliance>strong,.builder-item-energy b,.builder-method b,.builder-bill-breakdown b,.bill-form-header{font-size:var(--text-body)}
+.dashboard-header>div>span,.builder-header>div>span,.builder-method span{line-height:1.5}
+.dashboard-header h1{font-size:clamp(28px,2.6vw,36px);text-wrap:balance}
+.kicker{letter-spacing:.12em}
+.system-banner{min-height:76px;padding:14px 20px}
+.metric-grid{gap:16px;margin-bottom:20px}
+.metric-card{min-height:170px;padding:20px}
+.metric-title>i{width:38px;height:38px;font-size:18px}
+.metric-value{margin-top:20px;gap:8px}
+.metric-value strong{font-size:var(--text-value)}
+.metric-value span{font-weight:650}
+.trend{margin-top:11px}
+.budget{margin-top:20px}
+.load-card,.bill-card,.devices-card{padding:24px}
+.load-card h2,.section-heading h2{font-size:var(--text-section)}
+.load-card>header{padding-bottom:20px}
+.load-summary{gap:clamp(32px,5vw,76px);padding:20px 0 12px}
+.load-summary b{font-size:20px}
+.bar-chart{height:180px;gap:clamp(8px,1vw,14px);padding-top:12px}
+.bar-column{min-width:32px}
+.bar-column small{height:24px;padding-top:8px}
+.overview-grid{gap:20px;margin-top:20px}
+.bill-highlight{margin-top:24px}
+.bill-highlight strong{font-size:34px}
+.monthly-chart{height:190px}
+.device-row{grid-template-columns:44px minmax(0,1fr) auto;gap:12px;padding:14px 0}
+.device-product-thumb{width:44px;height:44px}
+.device-copy>span{height:4px;margin-top:9px}
+.insight-card{gap:16px;margin-top:20px;padding:20px 24px}
+.insight-icon{width:48px;height:48px;font-size:20px}
+.insight-card h3{font-size:var(--text-section)}
+.my-home-content{padding-top:32px}
+.builder-header{margin-bottom:28px}
+.builder-header h1{font-size:clamp(32px,3.4vw,46px);line-height:1.12;text-wrap:balance}
+.builder-header>div>span{margin-top:10px}
+.back-status{min-height:44px;padding:10px 15px}
+.builder-summary{gap:16px;margin-bottom:20px}
+.builder-summary article{grid-template-columns:48px 1fr;gap:14px;min-height:118px;padding:20px}
+.builder-summary article>i{width:48px;height:48px;font-size:22px}
+.builder-summary small{margin-bottom:7px}
+.builder-summary strong{font-size:30px}
+.builder-summary em{font-weight:650}
+.builder-bill-breakdown{gap:12px;margin-bottom:20px;padding:15px 18px}
+.builder-bill-breakdown b{font-size:var(--text-body);font-weight:700}
+.builder-workspace{gap:20px}
+.glass-panel{padding:24px}
+.builder-panel-heading{margin-bottom:20px}
+.builder-panel-heading h2{font-size:var(--text-section)}
+.builder-panel-heading>div>span{width:32px;height:32px;font-size:var(--text-caption)}
+.builder-search{min-height:48px}
+.builder-search input{font-size:var(--text-body)}
+.builder-tabs{gap:8px;margin:14px 0 18px}
+.builder-tabs button{min-height:40px;padding:8px 12px;font-size:var(--text-caption)}
+.builder-catalog-list{gap:10px;max-height:502px}
+.builder-appliance{grid-template-columns:76px minmax(0,1fr) 64px 44px;min-height:104px;gap:14px;padding:12px}
+.builder-product-image{width:76px;height:80px}
+.builder-product-copy>b{margin:5px 0 3px!important;font-size:var(--text-body)!important}
+.builder-product-copy>em{line-height:1.4}
+.builder-product-copy>small{margin-top:8px;padding:4px 7px}
+.builder-appliance>strong{font-size:18px}
+.builder-appliance>button{width:44px;height:44px;font-size:20px}
+.builder-dropzone{min-height:320px}
+.builder-empty h3{margin:16px 0 8px;font-size:var(--text-section)}
+.builder-empty p{font-size:var(--text-body);line-height:1.6}
+.builder-empty>span{margin-top:16px;padding:6px 10px}
+.builder-home-item-head{grid-template-columns:52px minmax(0,1fr) 44px;gap:12px}
+.builder-home-image{width:52px;height:52px}
+.builder-home-item-head>button{width:44px;height:44px;font-size:22px}
+.builder-item-name b{margin-top:4px;font-size:var(--text-body)}
+.builder-home-item-controls{grid-template-columns:minmax(120px,1fr) minmax(120px,1fr) 100px;gap:14px;margin-top:14px;padding-top:14px}
+.number-stepper-label{font-size:var(--text-caption)}
+.number-stepper-control{grid-template-columns:44px minmax(0,1fr) 44px;gap:5px}
+.number-stepper-control button{min-width:44px;min-height:44px;font-size:20px}
+.number-stepper-control input{height:44px;font-size:16px}
+.number-stepper-control small{top:13px;right:8px;font-size:var(--text-caption)}
+.builder-fixed-usage{min-height:44px}
+.builder-fixed-usage b{font-size:var(--text-body)}
+.builder-item-energy b{font-size:20px}
+.builder-method{gap:11px;margin-top:16px;padding:14px 16px}
+.builder-method>i{width:24px;height:24px;font-size:var(--text-caption)}
+.builder-method b{font-size:var(--text-body)}
+.save-pill{min-height:36px;padding:8px 12px}
+.bill-form label{font-size:var(--text-caption)}
+.bill-form label small{font-size:var(--text-caption)}
+.bill-form input{min-height:44px;font-size:16px}
+.bill-form-actions button{min-height:44px;font-size:var(--text-caption)}
+
+@media (max-width:1279px) and (min-width:701px){
+  .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media (max-width:700px){
+  .dashboard-header{gap:16px;margin-bottom:20px}
+  .dashboard-header h1{font-size:30px}
+  .dashboard-header>div>span{font-size:var(--text-caption)}
+  .metric-grid{gap:12px}
+  .metric-card{min-height:176px;padding:20px}
+  .metric-value strong{font-size:38px}
+  .load-card,.bill-card,.devices-card{padding:20px}
+  .load-summary{gap:28px;overflow-x:auto}
+  .load-summary>span{min-width:92px}
+  .bar-chart{height:176px;gap:4px;overflow-x:auto;overflow-y:hidden}
+  .bar-column{flex:0 0 30px}
+  .monthly-chart{height:180px;gap:8px;overflow-x:auto}
+  .monthly-chart>div{flex:0 0 38px}
+  .insight-card{grid-template-columns:48px 1fr;padding:18px 20px}
+  .my-home-content{padding:76px 15px 96px}
+  .builder-header{align-items:stretch;gap:16px}
+  .builder-header h1{font-size:32px}
+  .builder-header-actions{width:100%;flex-direction:row;justify-content:space-between;align-items:center}
+  .builder-summary{gap:10px}
+  .builder-summary article{min-height:108px;padding:16px}
+  .builder-summary article>i{width:42px;height:42px}
+  .builder-summary strong{font-size:28px}
+  .builder-bill-breakdown{gap:12px}
+  .glass-panel{padding:18px}
+  .builder-appliance{grid-template-columns:64px minmax(0,1fr) 54px 44px;gap:10px}
+  .builder-product-image{width:64px;height:72px}
+  .builder-appliance>strong{font-size:16px}
+  .builder-home-item-controls{grid-template-columns:1fr 1fr;gap:12px}
+  .builder-home-item-controls>.builder-item-energy{grid-column:1/-1}
+}
+
+@media (max-width:480px){
+  .builder-header h1{font-size:30px}
+  .builder-summary{grid-template-columns:1fr}
+  .builder-summary article{min-height:92px}
+  .builder-home-item-controls{grid-template-columns:1fr}
+  .builder-home-item-controls>.builder-item-energy{grid-column:auto;text-align:left}
+  .builder-dropzone{min-height:260px}
+}
+
+/* Keep regression-test selectors explicit so later responsive rules cannot shrink them. */
+.metric-title small{font-size:var(--text-caption)}
+.metric-value span{font-size:var(--text-caption)}
+.bar-column small{font-size:var(--text-caption)}
+.builder-summary small{font-size:var(--text-caption)}
+.builder-summary em{font-size:var(--text-caption)}
+.builder-bill-breakdown small{font-size:var(--text-caption)}
+.builder-product-copy>em{font-size:var(--text-caption)}
+.builder-item-name small{font-size:var(--text-caption)}
+.number-stepper-label{font-size:var(--text-caption)}
+.number-stepper-control small{font-size:var(--text-caption)}
+.builder-summary article>span{display:flex;flex-direction:column;align-items:flex-start}
+.builder-summary em{margin-top:4px;font-size:var(--text-caption)}
+.builder-product-copy>span{font-size:var(--text-caption)!important}
+.builder-product-copy>small{font-size:var(--text-caption)!important}
+.save-pill{font-size:var(--text-caption)!important}
+.back-status{font-size:var(--text-caption)}
+.side-nav a small{font-size:var(--text-caption)}
+.side-nav a em{font-size:var(--text-caption)}
+.sidebar-account b{font-size:var(--text-caption)}
+.sidebar-account small{font-size:var(--text-caption)}
+.builder-method span{font-size:var(--text-caption)}
+.sidebar-account>i{font-size:var(--text-caption)}
+.profile>i{font-size:var(--text-caption)}
+.dashboard-header>div>span{font-size:var(--text-caption)}
+.device-empty b{font-size:var(--text-body)}
+.insight-action{font-size:var(--text-caption)}
+
+@media (max-width:700px){
+  .builder-header{flex-direction:column}
+}
+
+/* All visible controls remain comfortable to tap at every breakpoint. */
+.builder-tabs button{min-height:44px}
+.period-switch button{min-height:44px}
+.monthly-record-actions button{width:44px;height:44px;min-height:44px}
+.bill-form-header button{width:44px;height:44px;min-height:44px}
+.mobile-sidebar-toggle{width:44px;height:44px;min-height:44px}
+.sidebar-close{width:44px;height:44px;min-height:44px}
+.notify{width:44px;height:44px;min-height:44px}
+.home-status button{min-width:44px;min-height:44px}
+.sidebar-account button{min-width:44px;min-height:44px}
+.insight-action{min-height:44px;font-size:var(--text-caption)}
