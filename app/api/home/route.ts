@@ -50,7 +50,7 @@ async function save(request: Request) {
       const rawCycles = Number(item.cyclesPerMonth);
       return {
         applianceKey: appliance.id,
-        quantity: Math.max(1, Math.min(20, Math.round(Number(item.quantity) || 1))),
+        quantity: Math.max(1, Math.round(Number(item.quantity) || 1)),
         hoursPerDay: profile.inputKind === 'hours'
           ? Math.max(0, Math.min(24, Number.isFinite(rawHours) ? rawHours : profile.defaultHoursPerDay ?? 0))
           : 0,

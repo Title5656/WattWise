@@ -17,7 +17,7 @@ import {
   resolveEnergyInput,
 } from '../lib/home-config.ts';
 import { getResidentialTariff } from '../lib/tariffs.ts';
-import { adjustStepperValue } from '../lib/stepper.ts';
+import { adjustStepperValue, parseStepperInput } from '../lib/stepper.ts';
 
 const fan = {
   id: 'fan-hatari-s16m7',
@@ -63,10 +63,19 @@ test('merges persisted duplicate items while keeping the first item settings', (
   assert.equal(result[0].instanceId, 'fan-1');
 });
 
-test('caps merged quantity at the existing maximum of 20', () => {
+test('allows duplicate appliance quantities above 20', () => {
   const result = addOrIncrementHomeItem([homeItem({ quantity: 20 })], homeItem({ instanceId: 'fan-2' }));
 
-  assert.equal(result[0].quantity, 20);
+  assert.equal(result[0].quantity, 21);
+});
+
+test('allows merged appliance quantities above 20', () => {
+  const result = mergeHomeItems([
+    homeItem({ quantity: 20 }),
+    homeItem({ instanceId: 'fan-2', quantity: 7 }),
+  ]);
+
+  assert.equal(result[0].quantity, 27);
 });
 
 test('calculates monthly energy for supported appliance methods', () => {
@@ -293,4 +302,11 @@ test('steps values with bounds and decimal precision', () => {
   assert.equal(adjustStepperValue(23.75, 0.25, { min: 0, max: 24, step: 0.25 }), 24);
   assert.equal(adjustStepperValue(1.1, -0.25, { min: 0, max: 24, step: 0.25 }), 0.75);
   assert.equal(adjustStepperValue(309, 1, { min: 0, max: 310, step: 1 }), 310);
+  assert.equal(adjustStepperValue(20, 1, { min: 1, step: 1 }), 21);
+});
+
+test('keeps an empty stepper draft empty instead of coercing it to zero', () => {
+  assert.equal(parseStepperInput('', { min: 1, step: 1 }), null);
+  assert.equal(parseStepperInput('  ', { min: 0, step: 0.5 }), null);
+  assert.equal(parseStepperInput('12', { min: 1, step: 1 }), 12);
 });

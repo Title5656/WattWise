@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { NumberStepper } from '@/components/ui/number-stepper';
 import { debounce } from '@/lib/debounce';
-import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, createHomeItem, mergeHomeItems, maxHomeApplianceQuantity, type HomeAppliance } from '@/lib/home-config';
+import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, createHomeItem, mergeHomeItems, type HomeAppliance } from '@/lib/home-config';
 import { getUsageProfile } from '@/lib/usage-profiles';
 
 const categories = ['ทั้งหมด', ...Array.from(new Set(catalog.map((item) => item.category)))];
@@ -89,10 +89,12 @@ export default function MyHomePage() {
   }
 
   function updateItem(instanceId: string, field: 'quantity' | 'hoursPerDay' | 'cyclesPerMonth', value: number) {
-    const maximum = field === 'quantity' ? maxHomeApplianceQuantity : field === 'hoursPerDay' ? 24 : 310;
+    const maximum = field === 'hoursPerDay' ? 24 : field === 'cyclesPerMonth' ? 310 : undefined;
     const minimum = field === 'quantity' ? 1 : 0;
     setHomeItems((current) => current.map((item) => item.instanceId === instanceId
-      ? { ...item, [field]: Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum)) }
+      ? { ...item, [field]: maximum === undefined
+        ? Math.max(minimum, Number.isFinite(value) ? value : minimum)
+        : Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum)) }
       : item));
   }
 
@@ -152,7 +154,7 @@ export default function MyHomePage() {
                 const profile = getUsageProfile(item.usageProfileId);
                 return <Card className="builder-home-item" key={item.instanceId}>
                   <div className="builder-home-item-head"><div className="builder-home-image"><Image src={item.image} alt="" width={88} height={88} /></div><div className="builder-item-name"><span>{item.brand}</span><b>{item.name}</b><small>{item.model}</small><em>{profile.description}</em></div><Button variant="ghost" size="icon" onClick={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} aria-label={`ลบ ${item.name}`}><Trash2 aria-hidden="true" /></Button></div>
-                  <div className="builder-home-item-controls"><NumberStepper label="จำนวน" unit="เครื่อง" value={item.quantity} min={1} max={maxHomeApplianceQuantity} step={1} onChange={(value) => updateItem(item.instanceId, 'quantity', value)} />{profile.inputKind === 'hours' && <NumberStepper label="ชม. / วัน" unit="ชม." value={item.hoursPerDay ?? profile.defaultHoursPerDay ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'hoursPerDay', value)} />}{profile.inputKind === 'cycles' && <NumberStepper label="รอบ / เดือน" unit="รอบ" value={item.cyclesPerMonth ?? profile.defaultCyclesPerMonth ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'cyclesPerMonth', value)} />}{profile.inputKind === 'fixed' && <div className="builder-fixed-usage"><b>24 ชม. / วัน</b><span>คิดตาม duty cycle</span></div>}<div className="builder-item-energy"><b>{formatNumber(kwh, 1)}</b><span>kWh / เดือน</span></div></div>
+                  <div className="builder-home-item-controls"><NumberStepper label="จำนวน" unit="เครื่อง" value={item.quantity} min={1} step={1} onChange={(value) => updateItem(item.instanceId, 'quantity', value)} onEmpty={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} />{profile.inputKind === 'hours' && <NumberStepper label="ชม. / วัน" unit="ชม." value={item.hoursPerDay ?? profile.defaultHoursPerDay ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'hoursPerDay', value)} onEmpty={() => updateItem(item.instanceId, 'hoursPerDay', 0)} />}{profile.inputKind === 'cycles' && <NumberStepper label="รอบ / เดือน" unit="รอบ" value={item.cyclesPerMonth ?? profile.defaultCyclesPerMonth ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'cyclesPerMonth', value)} onEmpty={() => updateItem(item.instanceId, 'cyclesPerMonth', 0)} />}{profile.inputKind === 'fixed' && <div className="builder-fixed-usage"><b>24 ชม. / วัน</b><span>คิดตาม duty cycle</span></div>}<div className="builder-item-energy"><b>{formatNumber(kwh, 1)}</b><span>kWh / เดือน</span></div></div>
                 </Card>;
               })}</div>}
           </div>
