@@ -97,3 +97,17 @@ export const tariffTiers = sqliteTable('tariff_tiers', {
   toKwh: real('to_kwh'),
   ratePerKwh: real('rate_per_kwh').notNull(),
 }, (table) => [uniqueIndex('idx_tariff_tiers_plan_sequence').on(table.tariffPlanId, table.sequence)]);
+
+export const monthlyEnergyRecords = sqliteTable('monthly_energy_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdKey: text('household_key').notNull(),
+  billingMonth: text('billing_month').notNull(),
+  estimatedKwh: real('estimated_kwh'),
+  estimatedBill: real('estimated_bill'),
+  actualKwh: real('actual_kwh'),
+  actualBill: real('actual_bill'),
+  estimatedAt: integer('estimated_at'),
+  actualAt: integer('actual_at'),
+}, (table) => [
+  uniqueIndex('idx_monthly_energy_records_household_month').on(table.householdKey, table.billingMonth),
+]);
