@@ -12,6 +12,14 @@ test('production deployment is main-only and applies D1 migrations before Worker
   assert.match(workflow, /api\/home/);
 });
 
+test('production artifacts use current artifact actions', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+
+  assert.match(workflow, /actions\/upload-artifact@v7/);
+  assert.match(workflow, /actions\/download-artifact@v8/);
+  assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/);
+});
+
 test('D1 migration bootstrap is additive and idempotent', async () => {
   const bootstrap = await readFile(new URL('../scripts/d1-baseline.sql', import.meta.url), 'utf8');
 
