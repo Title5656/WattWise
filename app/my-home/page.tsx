@@ -99,7 +99,7 @@ export default function MyHomePage() {
   }
 
   return <main className="dashboard-shell my-home-shell">
-    <WattWiseSidebar active="home" />
+    <WattWiseSidebar active="home" homeItemCount={saveState === 'loading' ? undefined : homeItems.length} />
 
     <section className="my-home-content">
       <header className="builder-header">

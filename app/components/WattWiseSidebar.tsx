@@ -15,7 +15,7 @@ const links = [
   { id: 'settings', label: 'Settings', detail: 'ตั้งค่าระบบและการแจ้งเตือน', icon: Settings, href: '/#settings', badge: undefined },
 ] as const;
 
-export function WattWiseSidebar({ active }: { active: ActivePage }) {
+export function WattWiseSidebar({ active, homeItemCount }: { active: ActivePage; homeItemCount?: number }) {
   const [open, setOpen] = useState(false);
 
   return <>
@@ -40,7 +40,11 @@ export function WattWiseSidebar({ active }: { active: ActivePage }) {
           <i><Icon aria-hidden="true" /></i><span><b>{link.label}</b><small>{link.detail}</small></span>{link.badge ? <em>{link.badge}</em> : null}
         </Link>;})}
       </nav>
-      <div className="sidebar-account" id="profile"><i>WP</i><span><b>วิทวัส</b><small>บ้านของฉัน · ออนไลน์</small></span><Button variant="ghost" size="icon" aria-label="เปิดโปรไฟล์"><ChevronRight aria-hidden="true" /></Button></div>
+      <Link className="sidebar-account" href="/my-home" onClick={() => setOpen(false)} aria-label="ไปจัดการอุปกรณ์ใน My Home">
+        <i className="sidebar-home-icon"><House aria-hidden="true" /><span /></i>
+        <span><b>สถานะบ้าน</b><small>{homeItemCount === undefined ? 'กำลังเชื่อมข้อมูลบ้าน' : `${homeItemCount} อุปกรณ์ · ออนไลน์`}</small></span>
+        <ChevronRight aria-hidden="true" />
+      </Link>
     </aside>
   </>;
 }

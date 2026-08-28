@@ -72,7 +72,7 @@ test('interactive controls keep a 44px touch target', async () => {
     '.sidebar-close',
     '.notify',
     '.home-status button',
-    '.sidebar-account button',
+    '.sidebar-account',
     '.insight-action',
   ];
 

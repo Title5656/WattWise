@@ -10,6 +10,7 @@ test('status and account copy uses the current user name', () => {
 
   assert.match(combinedCopy, /สวัสดีคุณวิทวัส/);
   assert.match(combinedCopy, /บ้านวิทวัส/);
-  assert.match(combinedCopy, />วิทวัส</);
+  assert.match(combinedCopy, /สถานะบ้าน/);
+  assert.doesNotMatch(sidebar, />วิทวัส</);
   assert.doesNotMatch(combinedCopy, /วรปรัชญ์/);
 });

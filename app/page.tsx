@@ -135,7 +135,7 @@ export default function Home() {
   }
 
   return <main className="dashboard-shell">
-    <WattWiseSidebar active="status" />
+    <WattWiseSidebar active="status" homeItemCount={homeLoading ? undefined : homeItems.length} />
 
     <section className="dashboard-content" id="overview">
       <header className="dashboard-header">
