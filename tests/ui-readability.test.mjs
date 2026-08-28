@@ -61,6 +61,13 @@ test('mobile My Home keeps the heading full width and groups summary units with 
   assert.match(styles, /\.builder-summary article>span\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/);
 });
 
+test('period hour steppers use adaptive columns instead of a forced mobile two-column grid', async () => {
+  const styles = await readStyles();
+
+  assert.match(latestRule(styles, '.builder-period-hours'), /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(220px,\s*100%\),\s*1fr\)\)/);
+  assert.doesNotMatch(styles, /@media\s*\(max-width:\s*700px\)[^{]*\{[\s\S]*\.builder-period-hours\s*\{[^}]*grid-template-columns:\s*repeat\(2,/);
+});
+
 test('interactive controls keep a 44px touch target', async () => {
   const styles = await readStyles();
   const selectors = [
