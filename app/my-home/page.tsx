@@ -35,11 +35,12 @@ function getHomeSaveStorage(): Storage | null {
   }
 }
 
-type HomeLockManager = { request<T>(name: string, callback: () => Promise<T>): Promise<T> };
+type HomeLockManager = { request(name: string, callback: () => Promise<void>): Promise<void> };
 
-function withHomeSaveLock<T>(task: () => Promise<T>) {
-  const lockManager = (navigator as Navigator & { locks?: HomeLockManager }).locks;
-  return lockManager ? lockManager.request('wattwise-home-save', task) : task();
+function withHomeSaveLock(task: () => Promise<void>): Promise<void> {
+  const lockManager = (navigator as { locks?: HomeLockManager }).locks;
+  if (!lockManager) return task();
+  return lockManager.request('wattwise-home-save', () => task());
 }
 
 export default function MyHomePage() {

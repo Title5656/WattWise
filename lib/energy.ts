@@ -218,6 +218,7 @@ export function calculateElectricityBill(totalKwh: number, tariff: TariffInput):
   const vat = tariff.mode === 'tiered_tariff'
     ? roundMoney(subtotal * clamp(finiteNumber(tariff.vatRate) ?? 0, 0, 1))
     : 0;
+  const tariffMetadata = tariff.mode === 'tiered_tariff' ? tariff : undefined;
 
   return {
     mode: tariff.mode,
@@ -229,11 +230,11 @@ export function calculateElectricityBill(totalKwh: number, tariff: TariffInput):
     subtotal,
     vat,
     total: roundMoney(subtotal + vat),
-    tariffStatus: tariff.status ?? 'current',
-    tariffEffectiveFrom: tariff.effectiveFrom ?? null,
-    tariffEffectiveTo: tariff.effectiveTo ?? null,
-    tariffSourceUrl: tariff.sourceUrl ?? null,
-    warnings: tariff.warnings ?? [],
+    tariffStatus: tariffMetadata?.status ?? 'current',
+    tariffEffectiveFrom: tariffMetadata?.effectiveFrom ?? null,
+    tariffEffectiveTo: tariffMetadata?.effectiveTo ?? null,
+    tariffSourceUrl: tariffMetadata?.sourceUrl ?? null,
+    warnings: tariffMetadata?.warnings ?? [],
   };
 }
 
