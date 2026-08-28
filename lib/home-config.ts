@@ -1,6 +1,7 @@
 import {
   calculateHouseholdEstimate,
   calculateEnergy,
+  calculateElectricityBill,
   type EnergyCalculationResult,
   type ElectricityBillResult,
 } from './energy.ts';
@@ -119,6 +120,7 @@ export type HomeSummary = {
   dailyKwh: number;
   monthlyKwh: number;
   monthlyBill: number;
+  monthlyBillRange: { low: number; high: number };
   bill: ElectricityBillResult;
   itemCalculations: HomeItemCalculation[];
 };
@@ -161,11 +163,16 @@ export function calculateDailyLoadProfile(items: HomeAppliance[]): number[] {
 }
 
 export function calculateHomeSummary(items: HomeAppliance[], billingDate = new Date()): HomeSummary {
+  const tariff = getResidentialTariff(billingDate);
   const estimate = calculateHouseholdEstimate(items.map((item) => ({
     key: item.instanceId,
     ...resolveEnergyInput(item),
     confidence: 'sample',
-  })), getResidentialTariff(billingDate));
+  })), tariff);
+  const monthlyBillRange = {
+    low: calculateElectricityBill(estimate.monthlyEnergyKwh * 0.9, tariff).total,
+    high: calculateElectricityBill(estimate.monthlyEnergyKwh * 1.1, tariff).total,
+  };
 
   return {
     totalUnits: estimate.totalUnits,
@@ -173,6 +180,7 @@ export function calculateHomeSummary(items: HomeAppliance[], billingDate = new D
     dailyKwh: estimate.dailyEnergyKwh,
     monthlyKwh: estimate.monthlyEnergyKwh,
     monthlyBill: estimate.bill.total,
+    monthlyBillRange,
     bill: estimate.bill,
     itemCalculations: estimate.itemCalculations.map((item) => ({
       instanceId: item.key,

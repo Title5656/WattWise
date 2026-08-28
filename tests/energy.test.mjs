@@ -262,6 +262,22 @@ test('keeps prototype item totals, home total, and bill in sync', () => {
   assert.equal(summary.bill.totalEnergyKwh, summary.monthlyKwh);
 });
 
+test('calculates the monthly bill range by rerunning the current tariff at +/- 10% usage', () => {
+  const items = applianceCatalog.slice(0, 2).map((appliance, index) => ({
+    ...appliance,
+    instanceId: `range-${index}`,
+    quantity: index + 1,
+    hoursPerDay: 24,
+    cyclesPerMonth: null,
+  }));
+  const summary = calculateHomeSummary(items, new Date('2026-08-15T00:00:00Z'));
+
+  assert.deepEqual(summary.monthlyBillRange, { low: 6611.68, high: 8128.82 });
+  assert.ok(summary.monthlyBillRange.low <= summary.monthlyBill);
+  assert.ok(summary.monthlyBill <= summary.monthlyBillRange.high);
+  assert.notEqual(summary.monthlyBillRange.low, summary.monthlyBill * 0.9);
+});
+
 test('resolves realistic usage profiles for the catalog', () => {
   const ac = createHomeItem(applianceCatalog.find((item) => item.id === 'ac-daikin-ftkd18'));
   const fridge = createHomeItem(applianceCatalog.find((item) => item.id === 'fridge-samsung-rt35'));

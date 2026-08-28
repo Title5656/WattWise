@@ -62,11 +62,11 @@ export default function Home() {
   const peak = Math.max(...values, 0);
   const chartPeak = Math.max(peak, 0.01);
   const averageLoad = summary.dailyKwh / 24;
-  const budgetProgress = Math.min(100, (summary.monthlyBill / 3500) * 100);
+  const hasEstimatedRange = !homeLoading && homeItems.length > 0;
   const metrics = [
     { icon: Zap, label: 'โหลดไฟรวม', note: 'เมื่ออุปกรณ์ทำงานพร้อมกัน', value: formatNumber(summary.ratedLoadKw, 2), unit: 'kW', trend: `${summary.totalUnits} เครื่อง`, compare: 'จาก My Home', tone: 'lime', bars: [2,3,2,5,4,7,6,8] },
     { icon: Gauge, label: 'พลังงานต่อวัน', note: 'จากชั่วโมงใช้งานที่กำหนด', value: formatNumber(summary.dailyKwh, 1), unit: 'kWh', trend: formatNumber(summary.monthlyKwh, 1), compare: 'kWh ต่อเดือน', tone: 'blue', bars: [2,4,3,6,5,8,6,7] },
-    { icon: Banknote, label: 'ค่าไฟประมาณการ', note: summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป', value: formatNumber(summary.monthlyBill), unit: 'บาท', trend: formatNumber(summary.monthlyKwh, 1), compare: 'หน่วยต่อเดือน', tone: 'amber', bars: [3,2,4,3,5,6,7,8] },
+    { icon: Banknote, label: 'ค่าไฟตามที่ตั้งไว้', note: summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป', value: formatNumber(summary.monthlyBill), unit: 'บาท', trend: formatNumber(summary.monthlyKwh, 1), compare: 'หน่วยต่อเดือน', tone: 'amber', bars: [3,2,4,3,5,6,7,8] },
   ];
   const monthlyBills = useMemo(() => selectRecentRecords(history), [history]);
   const monthlyPeak = Math.max(...monthlyBills.flatMap((bill) => [bill.estimatedBill ?? 0, bill.actualBill ?? 0]), 1);
@@ -146,9 +146,8 @@ export default function Home() {
           <div className="spark" aria-hidden="true">{item.bars.map((height, i) => <i key={i} style={{height: `${height * 9}%`}} />)}</div>
         </Card>;})}
         <Card className="metric-card violet forecast">
-          <div className="metric-title"><i><Target aria-hidden="true" /></i><span><b>คาดการณ์สิ้นเดือน</b><small>จากรูปแบบการใช้งาน</small></span></div>
-          <div className="metric-value"><strong>{formatNumber(summary.monthlyBill)}</strong><span>บาท</span></div>
-          <div className="budget"><p><span>งบประมาณ 3,500 บาท</span><b>{formatNumber(budgetProgress)}%</b></p><i><span style={{ width: `${budgetProgress}%` }} /></i></div>
+          <div className="metric-title"><i><Target aria-hidden="true" /></i><span><b>ช่วงค่าไฟโดยประมาณ</b><small>{hasEstimatedRange ? 'เมื่อการใช้งานจริงต่างจากที่ตั้งไว้ ±10%' : 'เพิ่มอุปกรณ์เพื่อดูช่วงค่าไฟ'}</small></span></div>
+          <div className="metric-value"><strong>{hasEstimatedRange ? `฿${formatNumber(summary.monthlyBillRange.low)}–฿${formatNumber(summary.monthlyBillRange.high)}` : '—'}</strong>{hasEstimatedRange && <span>บาท / เดือน</span>}</div>
         </Card>
       </section>
 
