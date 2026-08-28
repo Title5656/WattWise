@@ -73,6 +73,7 @@ export const savedHomeAppliances = sqliteTable('saved_home_appliances', {
   quantity: integer('quantity').notNull().default(1),
   hoursPerDay: real('hours_per_day').notNull().default(0),
   cyclesPerMonth: real('cycles_per_month'),
+  usageSchedule: text('usage_schedule'),
   position: integer('position').notNull().default(0),
   updatedAt: integer('updated_at').notNull(),
 }, (table) => [index('idx_saved_home_appliances_household').on(table.householdKey, table.position)]);

@@ -6,22 +6,14 @@ import { ArrowRight, Banknote, Bell, ChevronRight, Gauge, Pencil, Plus, Sparkles
 import { WattWiseSidebar } from './components/WattWiseSidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
+import { calculateDailyLoadProfile, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
 import { formatBillingMonthLabel, getBillingMonth, selectRecentRecords, type MonthlyEnergyRecord } from '@/lib/monthly-history';
-
-const chartData = {
-  day: [1.4, 1.2, 1.1, 1.3, 1.9, 2.7, 3.4, 2.9, 2.4, 3.1, 3.7, 3.24],
-  week: [2.1, 2.7, 2.45, 3.2, 3.6, 2.9, 3.24],
-  month: [2.2, 2.55, 2.4, 2.8, 3.15, 2.95, 3.24],
-};
-type Period = keyof typeof chartData;
 
 function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat('th-TH', { maximumFractionDigits: digits }).format(value);
 }
 
 export default function Home() {
-  const [period, setPeriod] = useState<Period>('day');
   const [homeItems, setHomeItems] = useState<HomeAppliance[]>([]);
   const [homeLoading, setHomeLoading] = useState(true);
   const [history, setHistory] = useState<MonthlyEnergyRecord[]>([]);
@@ -65,12 +57,11 @@ export default function Home() {
     item.calculation.monthlyEnergyKwh,
   ])), [summary.itemCalculations]);
   const values = useMemo(() => {
-    const scale = summary.ratedLoadKw > 0 ? summary.ratedLoadKw / 3.24 : 0;
-    return chartData[period].map((value) => value * scale);
-  }, [period, summary.ratedLoadKw]);
+    return calculateDailyLoadProfile(homeItems);
+  }, [homeItems]);
   const peak = Math.max(...values, 0);
   const chartPeak = Math.max(peak, 0.01);
-  const averageLoad = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  const averageLoad = summary.dailyKwh / 24;
   const budgetProgress = Math.min(100, (summary.monthlyBill / 3500) * 100);
   const metrics = [
     { icon: Zap, label: 'โหลดไฟรวม', note: 'เมื่ออุปกรณ์ทำงานพร้อมกัน', value: formatNumber(summary.ratedLoadKw, 2), unit: 'kW', trend: `${summary.totalUnits} เครื่อง`, compare: 'จาก My Home', tone: 'lime', bars: [2,3,2,5,4,7,6,8] },
@@ -162,9 +153,9 @@ export default function Home() {
       </section>
 
       <Card className="load-card" id="live-load">
-        <header><div><p className="kicker">LIVE MONITOR</p><h2>โหลดไฟภายในบ้าน</h2><span>กำลังไฟรวมจากอุปกรณ์ที่กำลังทำงาน</span></div><div className="period-switch">{(['day','week','month'] as Period[]).map(item => <Button variant="ghost" className={period === item ? 'active' : ''} onClick={() => setPeriod(item)} key={item}>{item === 'day' ? 'วันนี้' : item === 'week' ? '7 วัน' : '30 วัน'}</Button>)}</div></header>
-        <div className="load-summary"><span>โหลดรวม <b>{formatNumber(summary.ratedLoadKw, 2)} <small>kW</small></b></span><span>สูงสุด <b>{formatNumber(peak, 2)} <small>kW</small></b></span><span>เฉลี่ย <b>{formatNumber(averageLoad, 2)} <small>kW</small></b></span></div>
-        <div className="bar-chart" aria-label="กราฟโหลดไฟตามช่วงเวลา">{values.map((value, index) => <div className="bar-column" key={`${period}-${index}`}><em>{value.toFixed(1)}</em><i style={{height: `${(value / chartPeak) * 100}%`}} /><small>{period === 'day' ? `${String(index * 2).padStart(2,'0')}:00` : period === 'week' ? ['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.'][index] : `W${index + 1}`}</small></div>)}</div>
+        <header><div><p className="kicker">USAGE PROFILE</p><h2>โหลดไฟภายในบ้าน</h2><span>ประมาณการจากช่วงเวลาที่ตั้งไว้ · วันทั่วไป</span></div></header>
+        <div className="load-summary"><span>โหลดติดตั้ง <b>{formatNumber(summary.ratedLoadKw, 2)} <small>kW</small></b></span><span>สูงสุดโดยประมาณ <b>{formatNumber(peak, 2)} <small>kW</small></b></span><span>โหลดเฉลี่ย <b>{formatNumber(averageLoad, 2)} <small>kW</small></b></span></div>
+        <div className="bar-chart" aria-label="กราฟประมาณการโหลดไฟตามช่วงเวลา">{values.map((value, index) => <div className="bar-column" key={`day-${index}`}><em>{value.toFixed(1)}</em><i className={value > 0 ? 'has-load' : undefined} style={{height: `${(value / chartPeak) * 100}%`}} /><small>{`${String(index * 2).padStart(2,'0')}:00`}</small></div>)}</div>
       </Card>
 
       <section className="overview-grid" id="monthly">

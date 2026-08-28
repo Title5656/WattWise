@@ -65,7 +65,9 @@ test('interactive controls keep a 44px touch target', async () => {
   const styles = await readStyles();
   const selectors = [
     '.builder-tabs button',
-    '.period-switch button',
+    '.builder-period-chip',
+    '.builder-usage-schedule-header button',
+    '.number-stepper-control button',
     '.monthly-record-actions button',
     '.bill-form-header button',
     '.mobile-sidebar-toggle',

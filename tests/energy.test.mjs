@@ -12,12 +12,22 @@ import {
   addOrIncrementHomeItem,
   applianceCatalog,
   calculateHomeSummary,
+  calculateDailyLoadProfile,
   createHomeItem,
   mergeHomeItems,
   resolveEnergyInput,
 } from '../lib/home-config.ts';
 import { getResidentialTariff } from '../lib/tariffs.ts';
 import { adjustStepperValue, parseStepperInput } from '../lib/stepper.ts';
+import {
+  createDefaultUsageSchedule,
+  parseUsageSchedule,
+  setAllDayUsageSchedule,
+  scheduleHours,
+  toggleUsagePeriod,
+  usageScheduleFromLegacyHours,
+  updateUsagePeriodHours,
+} from '../lib/usage-schedule.ts';
 
 const fan = {
   id: 'fan-hatari-s16m7',
@@ -268,6 +278,106 @@ test('resolves realistic usage profiles for the catalog', () => {
   assert.equal(resolveEnergyInput(washer).method, 'per_cycle');
   assert.equal(resolveEnergyInput(washer).energyPerCycleKwh, 0.8);
   assert.equal(heater.hoursPerDay, 0.25);
+});
+
+test('creates the approved default schedules for appliance profiles', () => {
+  assert.deepEqual(createDefaultUsageSchedule('inverter_ac'), {
+    kind: 'hours',
+    hoursByPeriod: { night: 6, morning: 0, daytime: 0, evening: 2 },
+  });
+  assert.deepEqual(createDefaultUsageSchedule('refrigerator'), { kind: 'all_day' });
+  assert.deepEqual(createDefaultUsageSchedule('washing_machine'), {
+    kind: 'periods',
+    periods: ['daytime'],
+  });
+  assert.deepEqual(createDefaultUsageSchedule('water_heater'), {
+    kind: 'hours',
+    hoursByPeriod: { night: 0, morning: 0.25, daytime: 0, evening: 0 },
+  });
+  assert.deepEqual(createDefaultUsageSchedule('microwave'), {
+    kind: 'hours',
+    hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 0.25 },
+  });
+});
+
+test('toggles usage periods without mutating the original schedule', () => {
+  const original = {
+    kind: 'hours',
+    hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 2 },
+  };
+  const selected = toggleUsagePeriod(original, 'morning', 0.5);
+  const removed = toggleUsagePeriod(selected, 'evening', 0.5);
+
+  assert.deepEqual(selected.hoursByPeriod, { night: 0, morning: 0.5, daytime: 0, evening: 2 });
+  assert.deepEqual(removed.hoursByPeriod, { night: 0, morning: 0.5, daytime: 0, evening: 0 });
+  assert.deepEqual(original.hoursByPeriod, { night: 0, morning: 0, daytime: 0, evening: 2 });
+});
+
+test('clamps period hours to six hours and sets all-day schedules', () => {
+  const schedule = {
+    kind: 'hours',
+    hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 0 },
+  };
+
+  assert.equal(updateUsagePeriodHours(schedule, 'morning', 8, 0.5).hoursByPeriod.morning, 6);
+  assert.equal(updateUsagePeriodHours(schedule, 'morning', -1, 0.5).hoursByPeriod.morning, 0);
+  assert.deepEqual(setAllDayUsageSchedule(), { kind: 'hours', hoursByPeriod: { night: 6, morning: 6, daytime: 6, evening: 6 } });
+});
+
+test('preserves quarter-hour schedule steps', () => {
+  const empty = { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 0 } };
+
+  assert.equal(updateUsagePeriodHours(empty, 'morning', 0.25, 0.25).hoursByPeriod.morning, 0.25);
+  assert.equal(toggleUsagePeriod(empty, 'evening', 0.25).hoursByPeriod.evening, 0.25);
+  assert.equal(scheduleHours(usageScheduleFromLegacyHours('water_heater', 0.25)), 0.25);
+});
+
+test('keeps at least one period for cycle-based schedules', () => {
+  const schedule = { kind: 'periods', periods: ['daytime'] };
+
+  assert.deepEqual(toggleUsagePeriod(schedule, 'daytime', 1), schedule);
+  assert.deepEqual(toggleUsagePeriod(schedule, 'evening', 1), { kind: 'periods', periods: ['daytime', 'evening'] });
+});
+
+test('normalizes malformed schedules and preserves legacy hours within six-hour periods', () => {
+  assert.deepEqual(parseUsageSchedule('{"kind":"periods","periods":["daytime","daytime","unknown"]}', 'washing_machine'), {
+    kind: 'periods',
+    periods: ['daytime'],
+  });
+  assert.deepEqual(parseUsageSchedule('{not-json', 'television', 8), {
+    kind: 'hours',
+    hoursByPeriod: { night: 2, morning: 0, daytime: 0, evening: 6 },
+  });
+  assert.deepEqual(parseUsageSchedule('{"kind":"hours","hoursByPeriod":{}}', 'television', 8), {
+    kind: 'hours',
+    hoursByPeriod: { night: 2, morning: 0, daytime: 0, evening: 6 },
+  });
+  const legacy = usageScheduleFromLegacyHours('inverter_ac', 24);
+  assert.equal(scheduleHours(legacy), 24);
+  assert.ok(Object.values(legacy.hoursByPeriod).every((hours) => hours <= 6));
+});
+
+test('keeps an all-day appliance in every graph period', () => {
+  const fridge = createHomeItem(applianceCatalog.find((item) => item.id === 'fridge-samsung-rt35'));
+  const profile = calculateDailyLoadProfile([fridge]);
+  assert.equal(new Set(profile).size, 1);
+  assert.ok(profile.every((value) => value > 0));
+  assert.ok(Math.abs(profile.reduce((sum, value) => sum + value * 2, 0) - calculateHomeSummary([fridge]).dailyKwh) < 1e-9);
+});
+
+test('daily load profile conserves the household daily energy estimate', () => {
+  const items = [
+    { ...homeItem({ hoursPerDay: 4 }), usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 4 } } },
+    { ...createHomeItem(applianceCatalog.find((item) => item.id === 'washer-samsung-9')), usageSchedule: { kind: 'periods', periods: ['daytime'] } },
+  ];
+  const profile = calculateDailyLoadProfile(items);
+  const summary = calculateHomeSummary(items);
+
+  assert.equal(profile.length, 12);
+  assert.ok(Math.abs(profile.reduce((sum, value) => sum + value * 2, 0) - summary.dailyKwh) < 1e-9);
+  assert.equal(profile[0], 0);
+  assert.ok(profile[6] > 0);
+  assert.ok(profile[9] > 0);
 });
 
 test('selects residential tariffs by billing month and flags future fallback', () => {

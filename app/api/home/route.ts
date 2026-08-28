@@ -3,6 +3,7 @@ import { applianceCatalog, type HomeAppliance } from '@/lib/home-config';
 import { readHomeResponse } from '@/lib/home-response';
 import { householdKey, readSavedHomeItems } from '@/lib/home-storage';
 import { getUsageProfile } from '@/lib/usage-profiles';
+import { normalizeUsageSchedule, scheduleHours } from '@/lib/usage-schedule';
 
 function getDb() {
   if (!env.DB) throw new Error('D1 binding DB is unavailable');
@@ -42,15 +43,15 @@ async function save(request: Request) {
       const profile = getUsageProfile(appliance.usageProfileId);
       const rawHours = Number(item.hoursPerDay);
       const rawCycles = Number(item.cyclesPerMonth);
+      const usageSchedule = normalizeUsageSchedule(item.usageSchedule, appliance.usageProfileId, rawHours);
       return {
         applianceKey: appliance.id,
         quantity: Math.max(1, Math.round(Number(item.quantity) || 1)),
-        hoursPerDay: profile.inputKind === 'hours'
-          ? Math.max(0, Math.min(24, Number.isFinite(rawHours) ? rawHours : profile.defaultHoursPerDay ?? 0))
-          : 0,
+        hoursPerDay: scheduleHours(usageSchedule),
         cyclesPerMonth: profile.inputKind === 'cycles'
           ? Math.max(0, Math.min(310, Number.isFinite(rawCycles) ? rawCycles : profile.defaultCyclesPerMonth ?? 0))
           : null,
+        usageSchedule: JSON.stringify(usageSchedule),
       };
     }).filter((item): item is NonNullable<typeof item> => item !== null);
 
@@ -59,8 +60,8 @@ async function save(request: Request) {
     const statements = [
       db.prepare('DELETE FROM saved_home_appliances WHERE household_key = ?').bind(householdKey),
       ...items.map((item, position) => db.prepare(
-        'INSERT INTO saved_home_appliances (household_key, appliance_key, quantity, hours_per_day, cycles_per_month, position, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ).bind(householdKey, item.applianceKey, item.quantity, item.hoursPerDay, item.cyclesPerMonth, position, now)),
+        'INSERT INTO saved_home_appliances (household_key, appliance_key, quantity, hours_per_day, cycles_per_month, usage_schedule, position, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(householdKey, item.applianceKey, item.quantity, item.hoursPerDay, item.cyclesPerMonth, item.usageSchedule, position, now)),
     ];
     await db.batch(statements);
     const savedItems = await readItems();

@@ -14,15 +14,18 @@ type NumberStepperProps = StepperOptions & {
 
 export function NumberStepper({ label, value, unit, min, max, step, onChange, onEmpty }: NumberStepperProps) {
   const [draft, setDraft] = useState(String(value));
+  const [editing, setEditing] = useState(false);
   const options = { min, max, step };
   const decrement = () => {
     const next = adjustStepperValue(value, -step, options);
     setDraft(String(next));
+    setEditing(false);
     onChange(next);
   };
   const increment = () => {
     const next = adjustStepperValue(value, step, options);
     setDraft(String(next));
+    setEditing(false);
     onChange(next);
   };
 
@@ -37,15 +40,16 @@ export function NumberStepper({ label, value, unit, min, max, step, onChange, on
           min={min}
           max={max}
           step={step}
-          value={draft}
+          value={editing ? draft : String(value)}
           aria-label={label}
+          onFocus={() => { setEditing(true); setDraft(String(value)); }}
           onChange={(event) => {
             const raw = event.target.value;
             setDraft(raw);
             const parsed = parseStepperInput(raw, options);
             if (parsed !== null) onChange(parsed);
           }}
-          onBlur={() => { if (!draft.trim()) { setDraft(String(min)); onEmpty?.(); } }}
+          onBlur={() => { if (!draft.trim()) { onEmpty?.(); } setEditing(false); setDraft(String(value)); }}
           onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
         />
         {unit && <small>{unit}</small>}

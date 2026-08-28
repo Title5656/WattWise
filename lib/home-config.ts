@@ -1,10 +1,18 @@
 import {
   calculateHouseholdEstimate,
+  calculateEnergy,
   type EnergyCalculationResult,
   type ElectricityBillResult,
 } from './energy.ts';
 import { getResidentialTariff } from './tariffs.ts';
 import { getUsageProfile, resolveProfileEnergyInput, type UsageProfileId } from './usage-profiles.ts';
+import {
+  createDefaultUsageSchedule,
+  parseUsageSchedule,
+  scheduleHours,
+  type UsageSchedule,
+  usageScheduleFromLegacyHours,
+} from './usage-schedule.ts';
 
 export type Appliance = {
   id: string;
@@ -23,6 +31,7 @@ export type HomeAppliance = Appliance & {
   quantity: number;
   hoursPerDay: number | null;
   cyclesPerMonth: number | null;
+  usageSchedule?: UsageSchedule;
 };
 
 export const applianceCatalog: Appliance[] = [
@@ -49,17 +58,23 @@ export function createHomeItem(appliance: Appliance): HomeAppliance {
     quantity: 1,
     hoursPerDay: profile.inputKind === 'hours' ? profile.defaultHoursPerDay ?? 0 : null,
     cyclesPerMonth: profile.inputKind === 'cycles' ? profile.defaultCyclesPerMonth ?? 0 : null,
+    usageSchedule: createDefaultUsageSchedule(appliance.usageProfileId),
   };
 }
 
 export function resolveEnergyInput(item: HomeAppliance) {
   const profile = getUsageProfile(item.usageProfileId);
+  const usageSchedule = item.usageSchedule ?? usageScheduleFromLegacyHours(item.usageProfileId, item.hoursPerDay);
   return resolveProfileEnergyInput(profile, {
     ratedPowerW: item.watts,
     quantity: item.quantity,
-    hoursPerDay: item.hoursPerDay,
+    hoursPerDay: profile.inputKind === 'hours' ? scheduleHours(usageSchedule) : item.hoursPerDay,
     cyclesPerMonth: item.cyclesPerMonth,
   });
+}
+
+export function getHomeUsageSchedule(item: HomeAppliance): UsageSchedule {
+  return item.usageSchedule ?? usageScheduleFromLegacyHours(item.usageProfileId, item.hoursPerDay);
 }
 
 export function addOrIncrementHomeItem(items: HomeAppliance[], item: HomeAppliance): HomeAppliance[] {
@@ -108,6 +123,43 @@ export type HomeSummary = {
   itemCalculations: HomeItemCalculation[];
 };
 
+export function calculateDailyLoadProfile(items: HomeAppliance[]): number[] {
+  const values = Array.from({ length: 12 }, () => 0);
+  const periodIndex = { night: 0, morning: 3, daytime: 6, evening: 9 } as const;
+
+  for (const item of items) {
+    const input = resolveEnergyInput(item);
+    const calculation = calculateEnergy(input);
+    const schedule = getHomeUsageSchedule(item);
+    const periodEnergy = { night: 0, morning: 0, daytime: 0, evening: 0 };
+
+    if (schedule.kind === 'all_day') {
+      for (let index = 0; index < values.length; index += 1) values[index] += calculation.dailyEnergyKwh / 24;
+      continue;
+    }
+
+    if (schedule.kind === 'hours') {
+      const loadFactor = input.loadFactor ?? 1;
+      const ratedLoadKw = item.watts * Math.max(1, Math.round(item.quantity)) / 1000;
+      for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
+        periodEnergy[period] = ratedLoadKw * loadFactor * schedule.hoursByPeriod[period];
+      }
+    } else {
+      const selected = schedule.periods;
+      const dailyEnergy = selected.length > 0 ? calculation.dailyEnergyKwh / selected.length : 0;
+      for (const period of selected) periodEnergy[period] = dailyEnergy;
+    }
+
+    for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
+      const averageLoad = periodEnergy[period] / 6;
+      const start = periodIndex[period];
+      for (let index = start; index < start + 3; index += 1) values[index] += averageLoad;
+    }
+  }
+
+  return values;
+}
+
 export function calculateHomeSummary(items: HomeAppliance[], billingDate = new Date()): HomeSummary {
   const estimate = calculateHouseholdEstimate(items.map((item) => ({
     key: item.instanceId,
@@ -135,6 +187,7 @@ export function hydrateHomeItem(row: {
   quantity: number;
   hoursPerDay: number;
   cyclesPerMonth?: number | null;
+  usageSchedule?: string | null;
 }): HomeAppliance | null {
   const appliance = applianceCatalog.find((item) => item.id === row.applianceKey);
   if (!appliance) return null;
@@ -147,5 +200,6 @@ export function hydrateHomeItem(row: {
     cyclesPerMonth: profile.inputKind === 'cycles'
       ? row.cyclesPerMonth ?? profile.defaultCyclesPerMonth ?? 0
       : null,
+    usageSchedule: parseUsageSchedule(row.usageSchedule, appliance.usageProfileId, row.hoursPerDay),
   };
 }
