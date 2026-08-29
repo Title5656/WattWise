@@ -146,24 +146,26 @@ export function calculateMonthlyEnergy(input: EnergyInput): number {
 
 export type TariffTier = { fromKwh: number; toKwh: number | null; ratePerKwh: number };
 
-export type AverageRateTariff = {
-  mode: 'average_rate';
-  ratePerKwh: number;
-  label?: string;
-};
-
-export type TieredTariff = {
-  mode: 'tiered_tariff';
-  tiers: TariffTier[];
-  serviceCharge: number;
-  ftRatePerKwh: number;
-  vatRate: number;
+export type TariffMetadata = {
   label?: string;
   status?: 'current' | 'latest_known';
   effectiveFrom?: string;
   effectiveTo?: string | null;
   sourceUrl?: string;
   warnings?: CalculationNotice[];
+};
+
+export type AverageRateTariff = TariffMetadata & {
+  mode: 'average_rate';
+  ratePerKwh: number;
+};
+
+export type TieredTariff = TariffMetadata & {
+  mode: 'tiered_tariff';
+  tiers: TariffTier[];
+  serviceCharge: number;
+  ftRatePerKwh: number;
+  vatRate: number;
 };
 
 export type TariffInput = AverageRateTariff | TieredTariff;
