@@ -36,6 +36,13 @@ const officialSources = new Map([
   ['water-heater', 'https://labelno5.egat.co.th/home/stamp/index1.php?tname=heat'],
   ['rice-cooker', 'https://labelno5.egat.co.th/home/stamp/index1.php?tname=cook'],
 ]);
+const expectedEgatCategoryCounts = {
+  'air-conditioner': 80,
+  refrigerator: 80,
+  'rice-cooker': 41,
+  'washing-machine': 80,
+  'water-heater': 80,
+};
 
 function executeMigration(db, migration) {
   db.exec('BEGIN');
@@ -48,6 +55,132 @@ function executeMigration(db, migration) {
     db.exec('ROLLBACK');
     throw error;
   }
+}
+
+function findInvalidEnergySpecs(db) {
+  return db.prepare(`
+    SELECT catalog_key AS catalogKey
+    FROM appliance_models
+    WHERE is_active = 1 AND (
+      calculation_method IS NULL
+      OR calculation_method NOT IN ('rated_power', 'annual_energy', 'per_cycle')
+      OR (calculation_method = 'rated_power' AND (
+        rated_power_w IS NULL OR rated_power_w <= 0
+        OR annual_energy_kwh IS NOT NULL OR energy_per_cycle_kwh IS NOT NULL
+      ))
+      OR (calculation_method = 'annual_energy' AND (
+        annual_energy_kwh IS NULL OR annual_energy_kwh <= 0
+        OR rated_power_w IS NOT NULL OR energy_per_cycle_kwh IS NOT NULL
+      ))
+      OR (calculation_method = 'per_cycle' AND (
+        energy_per_cycle_kwh IS NULL OR energy_per_cycle_kwh <= 0
+        OR rated_power_w IS NOT NULL OR annual_energy_kwh IS NOT NULL
+      ))
+    )
+    ORDER BY catalog_key
+  `).all().map(({ catalogKey }) => catalogKey);
+}
+
+function getEgatCategoryCounts(db) {
+  return Object.fromEntries(db.prepare(`
+    SELECT c.slug, COUNT(*) AS count
+    FROM appliance_models m JOIN categories c ON c.id = m.category_id
+    WHERE m.catalog_key LIKE 'egat-%'
+    GROUP BY c.slug ORDER BY c.slug
+  `).all().map(({ slug, count }) => [slug, count]));
+}
+
+function findInvalidEgatProvenance(db) {
+  return db.prepare(`
+    SELECT m.catalog_key AS catalogKey
+    FROM appliance_models m JOIN categories c ON c.id = m.category_id
+    WHERE m.catalog_key LIKE 'egat-%' AND (
+      c.slug NOT IN ('air-conditioner', 'refrigerator', 'washing-machine', 'water-heater', 'rice-cooker')
+      OR m.source_name IS NULL OR m.source_name != 'EGAT Label No.5'
+      OR m.source_url IS NULL OR m.source_url != CASE c.slug
+        WHEN 'air-conditioner' THEN '${officialSources.get('air-conditioner')}'
+        WHEN 'refrigerator' THEN '${officialSources.get('refrigerator')}'
+        WHEN 'washing-machine' THEN '${officialSources.get('washing-machine')}'
+        WHEN 'water-heater' THEN '${officialSources.get('water-heater')}'
+        WHEN 'rice-cooker' THEN '${officialSources.get('rice-cooker')}'
+      END
+      OR m.verified_at IS NULL OR m.verified_at != ${verifiedAt}
+      OR m.confidence IS NULL OR m.confidence != 'high'
+    )
+    ORDER BY m.catalog_key
+  `).all().map(({ catalogKey }) => catalogKey);
+}
+
+function splitSqlValues(source) {
+  const values = [];
+  let start = 0;
+  let depth = 0;
+  let quoted = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "'") {
+      if (quoted && source[index + 1] === "'") {
+        index += 1;
+        continue;
+      }
+      quoted = !quoted;
+    } else if (!quoted && char === '(') {
+      depth += 1;
+    } else if (!quoted && char === ')') {
+      depth -= 1;
+    } else if (!quoted && depth === 0 && char === ',') {
+      values.push(source.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  values.push(source.slice(start).trim());
+  return values;
+}
+
+function unquoteSqlString(value) {
+  assert.match(value, /^'(?:[^']|'')*'$/);
+  return value.slice(1, -1).replaceAll("''", "'");
+}
+
+function parseImportedSeedRows(migration) {
+  return migration.split(/\r?\n/)
+    .filter((line) => line.startsWith('INSERT INTO appliance_models') && line.includes("VALUES ('egat-"))
+    .map((line) => {
+      const valuesStart = line.indexOf(' VALUES (') + ' VALUES ('.length;
+      const valuesEnd = line.indexOf(') ON CONFLICT(catalog_key)');
+      const values = splitSqlValues(line.slice(valuesStart, valuesEnd));
+      assert.equal(values.length, 23);
+      return {
+        key: unquoteSqlString(values[0]),
+        ratedPowerExpression: values[6],
+        annualEnergyExpression: values[8],
+        perCycleExpression: values[9],
+        capacityExpression: values[12],
+      };
+    });
+}
+
+function fingerprintForEgatRow(row) {
+  const canonical = [
+    'egat-spec-v1',
+    row.slug,
+    row.brand,
+    row.modelCode,
+    row.calculationMethod,
+    row.ratedPowerW == null ? '' : String(row.ratedPowerW),
+    row.annualEnergyKwh == null ? '' : String(row.annualEnergyKwh),
+    row.energyPerCycleKwh == null ? '' : String(row.energyPerCycleKwh),
+    row.capacityValue == null ? '' : String(row.capacityValue),
+    row.capacityUnit ?? '',
+    row.efficiencyLabel ?? '',
+  ].join('\u001f');
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of Buffer.from(canonical, 'utf8')) {
+    hash ^= BigInt(byte);
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
+  }
+  return hash.toString(16).padStart(16, '0').slice(-12);
 }
 
 async function createSeededDatabase() {
@@ -163,23 +296,9 @@ test('seed preserves every legacy key and enforces energy-spec invariants', asyn
     WHERE catalog_key NOT LIKE 'egat-%'
     ORDER BY catalog_key
   `).all().map(({ catalogKey }) => catalogKey);
-  const invalidSpecs = db.prepare(`
-    SELECT catalog_key AS catalogKey
-    FROM appliance_models
-    WHERE is_active = 1 AND NOT (
-      (calculation_method = 'rated_power' AND rated_power_w > 0
-        AND annual_energy_kwh IS NULL AND energy_per_cycle_kwh IS NULL)
-      OR
-      (calculation_method = 'annual_energy' AND annual_energy_kwh > 0
-        AND rated_power_w IS NULL AND energy_per_cycle_kwh IS NULL)
-      OR
-      (calculation_method = 'per_cycle' AND energy_per_cycle_kwh > 0
-        AND rated_power_w IS NULL AND annual_energy_kwh IS NULL)
-    )
-  `).all();
 
   assert.deepEqual(actualLegacyKeys, legacyKeys.toSorted());
-  assert.deepEqual(invalidSpecs, []);
+  assert.deepEqual(findInvalidEnergySpecs(db), []);
   assert.deepEqual(db.prepare(`
     SELECT catalog_key AS catalogKey
     FROM appliance_models
@@ -189,6 +308,26 @@ test('seed preserves every legacy key and enforces energy-spec invariants', asyn
       OR category_id IS NULL OR brand_id IS NULL
     )
   `).all(), []);
+
+  const requiredEnergyColumns = new Map([
+    ['rated_power', 'rated_power_w'],
+    ['annual_energy', 'annual_energy_kwh'],
+    ['per_cycle', 'energy_per_cycle_kwh'],
+  ]);
+  const expectedInvalidKeys = [];
+  for (const [method, column] of requiredEnergyColumns) {
+    const rows = db.prepare(`
+      SELECT catalog_key AS catalogKey
+      FROM appliance_models
+      WHERE calculation_method = ? AND catalog_key LIKE 'egat-%'
+      ORDER BY catalog_key LIMIT 2
+    `).all(method);
+    assert.equal(rows.length, 2);
+    db.prepare(`UPDATE appliance_models SET ${column} = NULL WHERE catalog_key = ?`).run(rows[0].catalogKey);
+    db.prepare(`UPDATE appliance_models SET ${column} = 0 WHERE catalog_key = ?`).run(rows[1].catalogKey);
+    expectedInvalidKeys.push(rows[0].catalogKey, rows[1].catalogKey);
+  }
+  assert.deepEqual(findInvalidEnergySpecs(db), expectedInvalidKeys.toSorted());
 });
 
 test('EGAT rows use exact direct values and permitted conversion formulas', async () => {
@@ -236,6 +375,48 @@ test('EGAT rows use exact direct values and permitted conversion formulas', asyn
   assert.equal(cooker.unit, 'L');
 });
 
+test('every imported AC and washer keeps its literal permitted conversion expression', async () => {
+  const migration = await readFile(new URL(`../drizzle/${migrationTag}.sql`, import.meta.url), 'utf8');
+  const db = await createSeededDatabase();
+  const actualByKey = new Map(db.prepare(`
+    SELECT catalog_key AS catalogKey, rated_power_w AS ratedPowerW,
+      annual_energy_kwh AS annualEnergyKwh, energy_per_cycle_kwh AS energyPerCycleKwh,
+      capacity_value AS capacityValue
+    FROM appliance_models
+    WHERE catalog_key LIKE 'egat-%'
+  `).all().map((row) => [row.catalogKey, row]));
+  const importedRows = parseImportedSeedRows(migration);
+  const acRows = importedRows.filter(({ key }) => key.startsWith('egat-ac-'));
+  const washerRows = importedRows.filter(({ key }) => key.startsWith('egat-washer-'));
+
+  assert.equal(acRows.length, 80);
+  assert.equal(washerRows.length, 80);
+  for (const row of acRows) {
+    const formula = /^\((\d+(?:\.\d+)?) \/ (\d+(?:\.\d+)?)\)$/.exec(row.ratedPowerExpression);
+    assert.ok(formula, `${row.key}: ${row.ratedPowerExpression}`);
+    const btuPerHour = Number(formula[1]);
+    const eer = Number(formula[2]);
+    assert.ok(btuPerHour > 0 && eer > 0, row.key);
+    assert.equal(Number(row.capacityExpression), btuPerHour, row.key);
+    assert.equal(row.annualEnergyExpression, 'NULL', row.key);
+    assert.equal(row.perCycleExpression, 'NULL', row.key);
+    assert.equal(actualByKey.get(row.key).ratedPowerW, btuPerHour / eer, row.key);
+    assert.equal(actualByKey.get(row.key).capacityValue, btuPerHour, row.key);
+  }
+  for (const row of washerRows) {
+    const formula = /^\((\d+(?:\.\d+)?) \* (\d+(?:\.\d+)?) \/ 1000\.0\)$/.exec(row.perCycleExpression);
+    assert.ok(formula, `${row.key}: ${row.perCycleExpression}`);
+    const wattHoursPerKg = Number(formula[1]);
+    const capacityKg = Number(formula[2]);
+    assert.ok(wattHoursPerKg > 0 && capacityKg > 0, row.key);
+    assert.equal(Number(row.capacityExpression), capacityKg, row.key);
+    assert.equal(row.ratedPowerExpression, 'NULL', row.key);
+    assert.equal(row.annualEnergyExpression, 'NULL', row.key);
+    assert.equal(actualByKey.get(row.key).energyPerCycleKwh, wattHoursPerKg * capacityKg / 1000, row.key);
+    assert.equal(actualByKey.get(row.key).capacityValue, capacityKg, row.key);
+  }
+});
+
 test('seed removes identical specs but retains same-model energy variants', async () => {
   const db = await createSeededDatabase();
   const duplicateSpecs = db.prepare(`
@@ -258,43 +439,78 @@ test('seed removes identical specs but retains same-model energy variants', asyn
   assert.deepEqual(retainedVariants, [5839, 8031]);
 });
 
-test('EGAT provenance, category caps, AC eligibility, and fingerprints are intact', async () => {
+test('EGAT provenance, exact category counts, and AC eligibility are intact', async () => {
   const db = await createSeededDatabase();
-  const categoryCounts = db.prepare(`
-    SELECT c.slug, COUNT(*) AS count
-    FROM appliance_models m JOIN categories c ON c.id = m.category_id
-    WHERE m.catalog_key LIKE 'egat-%'
-    GROUP BY c.slug ORDER BY c.slug
-  `).all();
-
-  assert.ok(categoryCounts.length === officialSources.size);
-  for (const row of categoryCounts) assert.ok(row.count <= 80, `${row.slug}: ${row.count}`);
-  assert.deepEqual(db.prepare(`
-    SELECT m.catalog_key AS catalogKey
-    FROM appliance_models m JOIN categories c ON c.id = m.category_id
-    WHERE m.catalog_key LIKE 'egat-%' AND (
-      m.source_name != 'EGAT Label No.5'
-      OR m.source_url != CASE c.slug
-        WHEN 'air-conditioner' THEN '${officialSources.get('air-conditioner')}'
-        WHEN 'refrigerator' THEN '${officialSources.get('refrigerator')}'
-        WHEN 'washing-machine' THEN '${officialSources.get('washing-machine')}'
-        WHEN 'water-heater' THEN '${officialSources.get('water-heater')}'
-        WHEN 'rice-cooker' THEN '${officialSources.get('rice-cooker')}'
-      END
-      OR m.verified_at != ${verifiedAt}
-      OR m.confidence != 'high'
-    )
-  `).all(), []);
+  assert.deepEqual(getEgatCategoryCounts(db), expectedEgatCategoryCounts);
+  assert.deepEqual(findInvalidEgatProvenance(db), []);
   assert.deepEqual(db.prepare(`
     SELECT catalog_key AS catalogKey
     FROM appliance_models
     WHERE catalog_key LIKE 'egat-ac-%'
       AND (usage_profile != 'inverter_ac' OR display_name NOT LIKE '%WALL TYPE%INVERTER%')
   `).all(), []);
-  assert.deepEqual(db.prepare(`
+
+  const nullSourceKey = db.prepare(`
     SELECT catalog_key AS catalogKey FROM appliance_models
-    WHERE catalog_key LIKE 'egat-%' AND catalog_key NOT GLOB 'egat-*-????????????'
-  `).all(), []);
+    WHERE catalog_key LIKE 'egat-ref-%' ORDER BY catalog_key LIMIT 1
+  `).get().catalogKey;
+  const unexpectedCategoryKey = db.prepare(`
+    SELECT catalog_key AS catalogKey FROM appliance_models
+    WHERE catalog_key LIKE 'egat-ac-%' ORDER BY catalog_key LIMIT 1
+  `).get().catalogKey;
+  const nullSourceNameKey = db.prepare(`
+    SELECT catalog_key AS catalogKey FROM appliance_models
+    WHERE catalog_key LIKE 'egat-ref-%' ORDER BY catalog_key LIMIT 1 OFFSET 1
+  `).get().catalogKey;
+  const nullVerifiedAtKey = db.prepare(`
+    SELECT catalog_key AS catalogKey FROM appliance_models
+    WHERE catalog_key LIKE 'egat-washer-%' ORDER BY catalog_key LIMIT 1
+  `).get().catalogKey;
+  const wrongConfidenceKey = db.prepare(`
+    SELECT catalog_key AS catalogKey FROM appliance_models
+    WHERE catalog_key LIKE 'egat-heat-%' ORDER BY catalog_key LIMIT 1
+  `).get().catalogKey;
+  db.prepare('UPDATE appliance_models SET source_url = NULL WHERE catalog_key = ?').run(nullSourceKey);
+  db.prepare('UPDATE appliance_models SET source_name = NULL WHERE catalog_key = ?').run(nullSourceNameKey);
+  db.prepare('UPDATE appliance_models SET verified_at = NULL WHERE catalog_key = ?').run(nullVerifiedAtKey);
+  db.prepare("UPDATE appliance_models SET confidence = 'medium' WHERE catalog_key = ?").run(wrongConfidenceKey);
+  db.prepare(`
+    UPDATE appliance_models
+    SET category_id = (SELECT id FROM categories WHERE slug = 'television')
+    WHERE catalog_key = ?
+  `).run(unexpectedCategoryKey);
+
+  assert.deepEqual(findInvalidEgatProvenance(db), [
+    nullSourceKey,
+    nullSourceNameKey,
+    nullVerifiedAtKey,
+    unexpectedCategoryKey,
+    wrongConfidenceKey,
+  ].toSorted());
+  assert.throws(() => assert.deepEqual(getEgatCategoryCounts(db), expectedEgatCategoryCounts));
+});
+
+test('every EGAT key fingerprint recomputes from canonical direct fields', async () => {
+  const db = await createSeededDatabase();
+  const rows = db.prepare(`
+    SELECT m.catalog_key AS catalogKey, c.slug, b.name AS brand,
+      m.model_code AS modelCode, m.calculation_method AS calculationMethod,
+      m.rated_power_w AS ratedPowerW, m.annual_energy_kwh AS annualEnergyKwh,
+      m.energy_per_cycle_kwh AS energyPerCycleKwh, m.capacity_value AS capacityValue,
+      m.capacity_unit AS capacityUnit, m.efficiency_label AS efficiencyLabel
+    FROM appliance_models m
+    JOIN categories c ON c.id = m.category_id
+    JOIN brands b ON b.id = m.brand_id
+    WHERE m.catalog_key LIKE 'egat-%'
+    ORDER BY m.catalog_key
+  `).all();
+
+  assert.equal(rows.length, 361);
+  for (const row of rows) {
+    const match = /-([0-9a-f]{12})$/.exec(row.catalogKey);
+    assert.ok(match, row.catalogKey);
+    assert.equal(match[1], fingerprintForEgatRow(row), row.catalogKey);
+  }
 });
 
 test('seed is idempotent and safe after 0005 backfilled a referenced legacy model', async () => {
@@ -304,6 +520,16 @@ test('seed is idempotent and safe after 0005 backfilled a referenced legacy mode
   executeMigration(db, seed);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM appliance_models').get().count, before);
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+
+  const priorFingerprintRekey = /UPDATE appliance_models SET catalog_key = '(egat-[^']+)' WHERE catalog_key = '(egat-[^']+)'/.exec(seed);
+  assert.ok(priorFingerprintRekey);
+  const [, revisedKey, priorKey] = priorFingerprintRekey;
+  const retainedImportedId = db.prepare('SELECT id FROM appliance_models WHERE catalog_key = ?').get(revisedKey).id;
+  db.prepare('UPDATE appliance_models SET catalog_key = ? WHERE id = ?').run(priorKey, retainedImportedId);
+  executeMigration(db, seed);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM appliance_models').get().count, before);
+  assert.equal(db.prepare('SELECT catalog_key AS catalogKey FROM appliance_models WHERE id = ?').get(retainedImportedId).catalogKey, revisedKey);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM appliance_models WHERE catalog_key = ?').get(priorKey).count, 0);
 
   const populated = createPre0005LegacyFixture();
   const migration0005 = await readFile(new URL('../drizzle/0005_mixed_ultimatum.sql', import.meta.url), 'utf8');
