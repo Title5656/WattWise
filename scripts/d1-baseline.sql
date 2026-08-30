@@ -19,3 +19,13 @@ SELECT '0002_realistic_usage.sql'
 WHERE EXISTS (
   SELECT 1 FROM pragma_table_info('saved_home_appliances') WHERE name = 'cycles_per_month'
 );
+
+INSERT OR IGNORE INTO d1_migrations (name)
+SELECT '0003_monthly_energy_records.sql'
+WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'monthly_energy_records');
+
+INSERT OR IGNORE INTO d1_migrations (name)
+SELECT '0004_usage_schedule.sql'
+WHERE EXISTS (
+  SELECT 1 FROM pragma_table_info('saved_home_appliances') WHERE name = 'usage_schedule'
+);

@@ -18,14 +18,20 @@ export const brands = sqliteTable('brands', {
 
 export const applianceModels = sqliteTable('appliance_models', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  catalogKey: text('catalog_key').notNull(),
   categoryId: integer('category_id').notNull().references(() => categories.id),
   brandId: integer('brand_id').notNull().references(() => brands.id),
   modelCode: text('model_code').notNull(),
   displayName: text('display_name').notNull(),
+  calculationMethod: text('calculation_method', {
+    enum: ['rated_power', 'annual_energy', 'per_cycle'],
+  }).notNull(),
   ratedPowerW: real('rated_power_w'),
   standbyPowerW: real('standby_power_w'),
   annualEnergyKwh: real('annual_energy_kwh'),
   energyPerCycleKwh: real('energy_per_cycle_kwh'),
+  loadFactor: real('load_factor'),
+  usageProfile: text('usage_profile'),
   capacityValue: real('capacity_value'),
   capacityUnit: text('capacity_unit'),
   efficiencyLabel: text('efficiency_label'),
@@ -33,11 +39,14 @@ export const applianceModels = sqliteTable('appliance_models', {
   sourceName: text('source_name'),
   verifiedAt: integer('verified_at', { mode: 'timestamp' }),
   confidence: text('confidence', { enum: ['high', 'medium', 'low', 'sample'] }).notNull().default('sample'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 }, (table) => [
-  uniqueIndex('idx_appliance_models_brand_model').on(table.brandId, table.modelCode),
-  index('idx_appliance_models_category').on(table.categoryId),
+  uniqueIndex('idx_appliance_models_catalog_key').on(table.catalogKey),
+  index('idx_appliance_models_active_category_sort').on(table.isActive, table.categoryId, table.sortOrder, table.catalogKey),
+  index('idx_appliance_models_active_search').on(table.isActive, table.displayName, table.modelCode, table.catalogKey),
 ]);
 
 export const households = sqliteTable('households', {
