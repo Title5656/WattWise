@@ -6,6 +6,7 @@ import { ArrowRight, Banknote, Bell, ChevronRight, Gauge, Pencil, Plus, Sparkles
 import { WattWiseSidebar } from './components/WattWiseSidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { createDashboardLifecycle, runDashboardMutation } from '@/lib/dashboard-lifecycle';
 import { calculateDailyLoadProfile, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
 import { createLatestRequestTracker, isAbortError } from '@/lib/latest-request';
 import { formatBillingMonthLabel, getBillingMonth, selectRecentRecords, type MonthlyEnergyRecord } from '@/lib/monthly-history';
@@ -26,30 +27,41 @@ export default function Home() {
   const [billError, setBillError] = useState('');
   const [billSaving, setBillSaving] = useState(false);
   const dashboardRequests = useRef(createLatestRequestTracker());
+  const dashboardLifecycle = useRef(createDashboardLifecycle());
 
   const refreshHome = useCallback(async () => {
+    const lifecycleGeneration = dashboardLifecycle.current.currentGeneration();
+    if (lifecycleGeneration === null) return;
     const request = dashboardRequests.current.begin();
     try {
       const response = await fetch('/api/home', { cache: 'no-store', signal: request.signal });
+      if (!dashboardLifecycle.current.isCurrent(lifecycleGeneration)
+        || !dashboardRequests.current.isLatest(request.generation)) return;
       if (!response.ok) throw new Error('load failed');
       const data = await response.json() as { items: HomeAppliance[]; history?: MonthlyEnergyRecord[] };
-      if (!dashboardRequests.current.isLatest(request.generation)) return;
+      if (!dashboardLifecycle.current.isCurrent(lifecycleGeneration)
+        || !dashboardRequests.current.isLatest(request.generation)) return;
       setHomeItems(data.items);
       setHistory(data.history ?? []);
     } catch (error) {
-      if (isAbortError(error) || !dashboardRequests.current.isLatest(request.generation)) return;
+      if (isAbortError(error) || !dashboardLifecycle.current.isCurrent(lifecycleGeneration)
+        || !dashboardRequests.current.isLatest(request.generation)) return;
     } finally {
-      if (dashboardRequests.current.isLatest(request.generation)) setHomeLoading(false);
+      if (dashboardLifecycle.current.isCurrent(lifecycleGeneration)
+        && dashboardRequests.current.isLatest(request.generation)) setHomeLoading(false);
     }
   }, []);
 
   useEffect(() => {
     const requests = dashboardRequests.current;
+    const lifecycle = dashboardLifecycle.current;
+    const lifecycleGeneration = lifecycle.mount();
     const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refreshHome(); };
     void refreshHome();
     window.addEventListener('focus', refreshHome);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
+      lifecycle.unmount(lifecycleGeneration);
       requests.cancel();
       window.removeEventListener('focus', refreshHome);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
@@ -98,40 +110,48 @@ export default function Home() {
 
   async function saveBill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const lifecycleGeneration = dashboardLifecycle.current.currentGeneration();
+    if (lifecycleGeneration === null) return;
     setBillSaving(true);
     setBillError('');
-    try {
-      const response = await fetch('/api/bills', {
+    await runDashboardMutation({
+      lifecycle: dashboardLifecycle.current,
+      generation: lifecycleGeneration,
+      request: () => fetch('/api/bills', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ month: billMonth, actualBill, actualKwh }),
-      });
-      const data = await response.json() as { records?: MonthlyEnergyRecord[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? 'บันทึกบิลจริงไม่สำเร็จ');
-      dashboardRequests.current.cancel();
-      setHistory(data.records ?? []);
-      setBillFormOpen(false);
-      await refreshHome();
-    } catch (error) {
-      setBillError(error instanceof Error ? error.message : 'บันทึกบิลจริงไม่สำเร็จ');
-    } finally {
-      setBillSaving(false);
-    }
+      }),
+      failureMessage: 'บันทึกบิลจริงไม่สำเร็จ',
+      onSuccess: (data: { records?: MonthlyEnergyRecord[]; error?: string }) => {
+        dashboardRequests.current.cancel();
+        setHistory(data.records ?? []);
+        setBillFormOpen(false);
+      },
+      onError: setBillError,
+      onSettled: () => setBillSaving(false),
+      refresh: refreshHome,
+    });
   }
 
   async function deleteBill(month: string) {
     if (!window.confirm(`ลบบิลจริงของเดือน ${month} ใช่หรือไม่?`)) return;
+    const lifecycleGeneration = dashboardLifecycle.current.currentGeneration();
+    if (lifecycleGeneration === null) return;
     setBillError('');
-    try {
-      const response = await fetch(`/api/bills?month=${encodeURIComponent(month)}`, { method: 'DELETE' });
-      const data = await response.json() as { records?: MonthlyEnergyRecord[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? 'ลบบิลจริงไม่สำเร็จ');
-      dashboardRequests.current.cancel();
-      setHistory(data.records ?? []);
-      await refreshHome();
-    } catch (error) {
-      setBillError(error instanceof Error ? error.message : 'ลบบิลจริงไม่สำเร็จ');
-    }
+    await runDashboardMutation({
+      lifecycle: dashboardLifecycle.current,
+      generation: lifecycleGeneration,
+      request: () => fetch(`/api/bills?month=${encodeURIComponent(month)}`, { method: 'DELETE' }),
+      failureMessage: 'ลบบิลจริงไม่สำเร็จ',
+      onSuccess: (data: { records?: MonthlyEnergyRecord[]; error?: string }) => {
+        dashboardRequests.current.cancel();
+        setHistory(data.records ?? []);
+      },
+      onError: setBillError,
+      onSettled: () => undefined,
+      refresh: refreshHome,
+    });
   }
 
   return <main className="dashboard-shell">

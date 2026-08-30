@@ -48,9 +48,14 @@ test('dashboard refreshes use latest-only cancellation and bill saves trigger th
   const source = await read('../app/page.tsx');
 
   assert.match(source, /createLatestRequestTracker/);
+  assert.match(source, /createDashboardLifecycle/);
+  assert.match(source, /const lifecycle = dashboardLifecycle\.current/);
+  assert.match(source, /const lifecycleGeneration = lifecycle\.mount\(\)/);
+  assert.match(source, /lifecycle\.unmount\(lifecycleGeneration\)[^]*requests\.cancel\(\)/);
+  assert.match(source, /runDashboardMutation/);
   assert.match(source, /signal:\s*request\.signal/);
   assert.match(source, /dashboardRequests\.current\.isLatest\(request\.generation\)/);
-  assert.match(source, /dashboardRequests\.current\.cancel\(\)/);
-  assert.match(source, /await refreshHome\(\)/);
+  assert.match(source, /method: 'PUT'/);
+  assert.match(source, /method: 'DELETE'/);
   assert.match(source, /isAbortError/);
 });
