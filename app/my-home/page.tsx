@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { NumberStepper } from '@/components/ui/number-stepper';
 import { debounce } from '@/lib/debounce';
-import { clearPendingHomeSave, readPendingHomeSave, stagePendingHomeSave } from '@/lib/home-save-outbox';
+import { canonicalizePendingHomeSave, clearPendingHomeSave, readPendingHomeSave, syncPendingHomeSave } from '@/lib/home-save-outbox';
 import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, createHomeItem, getHomeUsageSchedule, type HomeAppliance } from '@/lib/home-config';
 import { getUsageProfile } from '@/lib/usage-profiles';
 import { scheduleHours, setAllDayUsageSchedule, toggleUsagePeriod, USAGE_PERIODS, updateUsagePeriodHours, type UsagePeriod } from '@/lib/usage-schedule';
@@ -78,7 +78,8 @@ export default function MyHomePage() {
         })
         .then((data) => {
           if (cancelled) return;
-          lastSavedBody.current = JSON.stringify({ items: data.items });
+          const serverBody = JSON.stringify({ items: data.items });
+          lastSavedBody.current = canonicalizePendingHomeSave(serverBody) ?? serverBody;
           setHomeItems(data.items);
           setReady(true);
           setSaveState('saved');
@@ -91,17 +92,19 @@ export default function MyHomePage() {
   useEffect(() => {
     if (!ready) return;
     const sequence = ++saveSequence.current;
-    const body = JSON.stringify({ items: homeItems });
+    const serializedBody = JSON.stringify({ items: homeItems });
+    const body = canonicalizePendingHomeSave(serializedBody) ?? serializedBody;
     const storage = getHomeSaveStorage();
-    if (body === lastSavedBody.current) {
+    const pendingBody = storage
+      ? syncPendingHomeSave(storage, body, lastSavedBody.current)
+      : body === lastSavedBody.current ? null : body;
+    if (pendingBody === null) {
       setSaveState('saved');
       return;
     }
-    if (storage) stagePendingHomeSave(storage, body);
-    const scheduleSave = debounce((snapshot: HomeAppliance[]) => {
+    const scheduleSave = debounce((savedBody: string) => {
       setSaveState('saving');
       saveQueue.current = saveQueue.current.catch(() => undefined).then(() => withHomeSaveLock(async () => {
-        const savedBody = JSON.stringify({ items: snapshot });
         if (storage && readPendingHomeSave(storage) !== savedBody) return;
         const response = await fetch('/api/home', {
           method: 'PUT',
@@ -115,7 +118,7 @@ export default function MyHomePage() {
         if (sequence === saveSequence.current) setSaveState('saved');
       })).catch(() => { if (sequence === saveSequence.current) setSaveState('error'); });
     }, 300);
-    scheduleSave(homeItems);
+    scheduleSave(pendingBody);
     return scheduleSave.cancel;
   }, [homeItems, ready]);
 

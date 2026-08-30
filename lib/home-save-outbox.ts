@@ -12,7 +12,7 @@ const riceCookerSchedule = {
   hoursByPeriod: { night: 0, morning: 1, daytime: 0, evening: 0 },
 };
 
-function finiteNumber(value: unknown) {
+function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
@@ -55,7 +55,8 @@ function isPendingItem(value: unknown) {
   if (!requiredStrings.every((key) => typeof item[key] === 'string')) return false;
   if (!Object.hasOwn(usageProfiles, item.usageProfileId as string)) return false;
   if (item.watts !== null && !finiteNumber(item.watts)) return false;
-  if (!finiteNumber(item.quantity)) return false;
+  const quantity = item.quantity;
+  if (!finiteNumber(quantity) || !Number.isInteger(quantity) || quantity < 1 || quantity > 99) return false;
   if (item.hoursPerDay !== undefined && item.hoursPerDay !== null && !finiteNumber(item.hoursPerDay)) return false;
   if (item.cyclesPerMonth !== undefined && item.cyclesPerMonth !== null && !finiteNumber(item.cyclesPerMonth)) return false;
   if (!isSchedule(item.usageSchedule)) return false;
@@ -73,26 +74,35 @@ function validateBody(body: string) {
   }
 }
 
-function migrateLegacyBody(body: string): string | null {
+function canonicalizePendingItem(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Record<string, unknown>;
+  const quantity = item.quantity;
+  if (!finiteNumber(quantity) || quantity <= 0) return null;
+  const canonical = item.usageProfileId === 'rice_cooker'
+    ? {
+      ...item,
+      usageProfileId: 'rice_cooker_hours',
+      hoursPerDay: 1,
+      cyclesPerMonth: null,
+      usageSchedule: riceCookerSchedule,
+    }
+    : { ...item };
+  return {
+    ...canonical,
+    quantity: Math.min(99, Math.max(1, Math.round(quantity))),
+  };
+}
+
+export function canonicalizePendingHomeSave(body: string): string | null {
   try {
     const parsed = JSON.parse(body) as { items?: unknown };
-    if (!Array.isArray(parsed.items) || parsed.items.length > 100) return null;
-    let changed = false;
-    const items = parsed.items.map((value) => {
-      if (!value || typeof value !== 'object') return value;
-      const item = value as Record<string, unknown>;
-      if (item.usageProfileId !== 'rice_cooker') return item;
-      changed = true;
-      return {
-        ...item,
-        usageProfileId: 'rice_cooker_hours',
-        hoursPerDay: 1,
-        cyclesPerMonth: null,
-        usageSchedule: riceCookerSchedule,
-      };
-    });
-    const migrated = changed ? JSON.stringify({ ...parsed, items }) : body;
-    return validateBody(migrated) ? migrated : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+      || !Array.isArray(parsed.items) || parsed.items.length > 100) return null;
+    const items = parsed.items.map(canonicalizePendingItem);
+    if (items.some((item) => item === null)) return null;
+    const canonical = JSON.stringify({ ...parsed, items });
+    return validateBody(canonical) ? canonical : null;
   } catch {
     return null;
   }
@@ -109,8 +119,9 @@ function parseEnvelope(raw: string): Envelope | null {
 
 export function stagePendingHomeSave(storage: StorageLike, body: string) {
   try {
-    storage.setItem(HOME_SAVE_OUTBOX_KEY, JSON.stringify({ version: 2, body } satisfies Envelope));
-    storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
+    const canonicalBody = canonicalizePendingHomeSave(body);
+    storage.setItem(HOME_SAVE_OUTBOX_KEY, JSON.stringify({ version: 2, body: canonicalBody ?? body } satisfies Envelope));
+    if (canonicalBody) storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
   } catch {
     // Storage can be unavailable in private browsing or when quota is exhausted.
   }
@@ -121,24 +132,25 @@ export function readPendingHomeSave(storage: StorageLike): string | null {
     const raw = storage.getItem(HOME_SAVE_OUTBOX_KEY);
     if (raw !== null) {
       const envelope = parseEnvelope(raw);
-      if (envelope && validateBody(envelope.body)) return envelope.body;
+      const canonicalBody = envelope && canonicalizePendingHomeSave(envelope.body);
+      if (canonicalBody) return canonicalBody;
       storage.removeItem(HOME_SAVE_OUTBOX_KEY);
     }
 
     const legacyBody = storage.getItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
     if (legacyBody === null) return null;
-    const migratedBody = migrateLegacyBody(legacyBody);
-    if (!migratedBody) {
+    const canonicalBody = canonicalizePendingHomeSave(legacyBody);
+    if (!canonicalBody) {
       storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
       return null;
     }
     try {
-      storage.setItem(HOME_SAVE_OUTBOX_KEY, JSON.stringify({ version: 2, body: migratedBody } satisfies Envelope));
+      storage.setItem(HOME_SAVE_OUTBOX_KEY, JSON.stringify({ version: 2, body: canonicalBody } satisfies Envelope));
     } catch {
-      return migratedBody;
+      return canonicalBody;
     }
     storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
-    return migratedBody;
+    return canonicalBody;
   } catch {
     return null;
   }
@@ -146,10 +158,34 @@ export function readPendingHomeSave(storage: StorageLike): string | null {
 
 export function clearPendingHomeSave(storage: StorageLike, body: string) {
   try {
+    const canonicalBody = canonicalizePendingHomeSave(body);
+    if (!canonicalBody) return;
     const envelope = parseEnvelope(storage.getItem(HOME_SAVE_OUTBOX_KEY) ?? '');
-    if (envelope?.body === body) storage.removeItem(HOME_SAVE_OUTBOX_KEY);
-    if (storage.getItem(LEGACY_HOME_SAVE_OUTBOX_KEY) === body) storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
+    if (envelope && canonicalizePendingHomeSave(envelope.body) === canonicalBody) storage.removeItem(HOME_SAVE_OUTBOX_KEY);
+    const legacyBody = storage.getItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
+    if (legacyBody && canonicalizePendingHomeSave(legacyBody) === canonicalBody) storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
   } catch {
     // A successful server save is still safe if storage becomes unavailable.
   }
+}
+
+export function discardPendingHomeSave(storage: StorageLike) {
+  try {
+    storage.removeItem(HOME_SAVE_OUTBOX_KEY);
+    storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
+  } catch {
+    // Confirmed saves remain safe if storage becomes unavailable.
+  }
+}
+
+export function syncPendingHomeSave(storage: StorageLike, currentBody: string, lastSavedBody: string | null): string | null {
+  const canonicalCurrent = canonicalizePendingHomeSave(currentBody);
+  const canonicalSaved = lastSavedBody === null ? null : canonicalizePendingHomeSave(lastSavedBody);
+  if (canonicalCurrent && canonicalCurrent === canonicalSaved) {
+    discardPendingHomeSave(storage);
+    return null;
+  }
+  const pendingBody = canonicalCurrent ?? currentBody;
+  stagePendingHomeSave(storage, pendingBody);
+  return pendingBody;
 }

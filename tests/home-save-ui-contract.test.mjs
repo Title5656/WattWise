@@ -4,13 +4,11 @@ import test from 'node:test';
 
 const read = () => readFile(new URL('../app/my-home/page.tsx', import.meta.url), 'utf8');
 
-test('clean server snapshots are compared before a pending save is staged', async () => {
+test('My Home synchronizes pending storage before scheduling a save', async () => {
   const source = await read();
-  const unchanged = source.indexOf("if (body === lastSavedBody.current)");
-  const stage = source.indexOf('stagePendingHomeSave(storage, body)');
 
-  assert.ok(unchanged >= 0, 'the unchanged-snapshot guard is present');
-  assert.ok(stage > unchanged, 'the clean snapshot guard runs before staging pending storage');
+  assert.match(source, /syncPendingHomeSave/);
+  assert.doesNotMatch(source, /stagePendingHomeSave\(storage, body\)/);
 });
 
 test('server and pending loads preserve separate saved appliance instances', async () => {

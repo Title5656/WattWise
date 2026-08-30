@@ -82,6 +82,18 @@ test('outbox rejects malformed or oversized pending payloads', () => {
   assert.equal(localStorage.getItem(outbox.HOME_SAVE_OUTBOX_KEY), null);
 });
 
+test('synchronizing a reverted edit discards the abandoned pending body', () => {
+  const localStorage = storage();
+  const confirmed = JSON.stringify({ items: [item('confirmed')] });
+  const abandoned = JSON.stringify({ items: [item('abandoned')] });
+
+  assert.equal(outbox.syncPendingHomeSave(localStorage, confirmed, null), confirmed);
+  assert.equal(outbox.syncPendingHomeSave(localStorage, abandoned, confirmed), abandoned);
+  assert.equal(outbox.readPendingHomeSave(localStorage), abandoned);
+  assert.equal(outbox.syncPendingHomeSave(localStorage, confirmed, confirmed), null);
+  assert.equal(outbox.readPendingHomeSave(localStorage), null);
+});
+
 test('migrates a valid v1 rice-cooker body to the v2 retry envelope', () => {
   const localStorage = storage();
   const legacy = item('legacy-rice');
@@ -105,6 +117,8 @@ test('migrates a valid v1 rice-cooker body to the v2 retry envelope', () => {
     version: 2,
     body: migratedBody,
   });
+  outbox.clearPendingHomeSave(localStorage, migratedBody);
+  assert.equal(outbox.readPendingHomeSave(localStorage), null);
 });
 
 test('keeps a valid v1 retry body when writing its v2 migration exceeds quota', () => {
@@ -117,6 +131,29 @@ test('keeps a valid v1 retry body when writing its v2 migration exceeds quota', 
   assert.equal(retryBody, JSON.stringify({ items: [legacy] }));
   assert.equal(localStorage.getItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY), retryBody);
   assert.equal(localStorage.getItem(outbox.HOME_SAVE_OUTBOX_KEY), null);
+  outbox.clearPendingHomeSave(localStorage, retryBody);
+  assert.equal(outbox.readPendingHomeSave(localStorage), null);
+});
+
+test('clears a retained transformed rice v1 body after its canonical save succeeds', () => {
+  const localStorage = quotaFailingStorage();
+  const legacy = {
+    ...item('legacy-rice-quota'),
+    usageProfileId: 'rice_cooker',
+    hoursPerDay: null,
+    cyclesPerMonth: 30,
+    usageSchedule: { kind: 'periods', periods: ['morning'] },
+  };
+  const legacyBody = JSON.stringify({ items: [legacy] });
+  localStorage.setItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY, legacyBody);
+
+  const retryBody = outbox.readPendingHomeSave(localStorage);
+
+  assert.equal(JSON.parse(retryBody).items[0].usageProfileId, 'rice_cooker_hours');
+  assert.equal(localStorage.getItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY), legacyBody);
+  outbox.clearPendingHomeSave(localStorage, retryBody);
+  assert.equal(localStorage.getItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY), null);
+  assert.equal(outbox.readPendingHomeSave(localStorage), null);
 });
 
 test('accepts nullable watts with annual and per-cycle energy specs', () => {
@@ -135,13 +172,36 @@ test('accepts nullable watts with annual and per-cycle energy specs', () => {
   assert.equal(outbox.readPendingHomeSave(localStorage), body);
 });
 
-test('keeps structurally valid server-rejected quantities durable for retry', () => {
+test('reads canonical integer quantities and clears their original v2 representation', () => {
   const localStorage = storage();
-  const body = JSON.stringify({ items: [{ ...item('too-many-units'), quantity: 100 }] });
+  const body = JSON.stringify({ items: [
+    { ...item('same-model'), instanceId: 'same-model-1', quantity: 100, usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 4, daytime: 0, evening: 0 } } },
+    { ...item('same-model'), instanceId: 'same-model-2', quantity: 1.5, usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 4 } } },
+  ] });
+
+  localStorage.setItem(outbox.HOME_SAVE_OUTBOX_KEY, envelope(body));
+
+  const retryBody = outbox.readPendingHomeSave(localStorage);
+  const retry = JSON.parse(retryBody);
+
+  assert.deepEqual(retry.items.map((entry) => ({ instanceId: entry.instanceId, quantity: entry.quantity, usageSchedule: entry.usageSchedule })), [
+    { instanceId: 'same-model-1', quantity: 99, usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 4, daytime: 0, evening: 0 } } },
+    { instanceId: 'same-model-2', quantity: 2, usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 4 } } },
+  ]);
+
+  outbox.clearPendingHomeSave(localStorage, retryBody);
+  assert.equal(outbox.readPendingHomeSave(localStorage), null);
+  assert.equal(localStorage.getItem(outbox.HOME_SAVE_OUTBOX_KEY), null);
+});
+
+test('removes nonpositive durable quantities instead of retrying an invalid save', () => {
+  const localStorage = storage();
+  const body = JSON.stringify({ items: [{ ...item('invalid-quantity'), quantity: 0 }] });
 
   outbox.stagePendingHomeSave(localStorage, body);
 
-  assert.equal(outbox.readPendingHomeSave(localStorage), body);
+  assert.equal(outbox.readPendingHomeSave(localStorage), null);
+  assert.equal(localStorage.getItem(outbox.HOME_SAVE_OUTBOX_KEY), null);
 });
 
 test('removes v2 payloads with malformed energy-spec unions', () => {
