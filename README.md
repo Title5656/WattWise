@@ -18,6 +18,7 @@ Home Energy Builder & Simulator สำหรับประกอบบ้าน
 
 - `PROJECT_SPEC.md` — ขอบเขตผลิตภัณฑ์และ acceptance criteria
 - `CONTRIBUTING.md` — วิธีพัฒนา ตรวจสอบ และส่ง Pull Request
+- `docs/catalog.md` — EGAT snapshot provenance, D1 migration procedure, and catalog API contract
 - `db/schema.ts` — แบบข้อมูล D1/SQLite
 - `lib/energy.ts` — Calculation engine แบบ pure functions
 
