@@ -2,20 +2,22 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { ArrowLeft, Banknote, Gauge, House, Info, Plus, Search, Trash2, Zap } from 'lucide-react';
 import { WattWiseSidebar } from '../components/WattWiseSidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { NumberStepper } from '@/components/ui/number-stepper';
+import { buildCatalogUrl, catalogReducer, formatCatalogEnergySpec, initialCatalogState, isCatalogQueryReady } from '@/lib/catalog-ui';
+import type { CatalogResponse } from '@/lib/catalog-repository';
 import { debounce } from '@/lib/debounce';
 import { canonicalizePendingHomeSave, clearPendingHomeSave, readPendingHomeSave, syncPendingHomeSave } from '@/lib/home-save-outbox';
-import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, createHomeItem, getHomeUsageSchedule, type HomeAppliance } from '@/lib/home-config';
+import { addOrIncrementHomeItem, calculateHomeSummary, createHomeItem, getHomeUsageSchedule, type Appliance, type HomeAppliance } from '@/lib/home-config';
+import { createLatestRequestTracker, isAbortError } from '@/lib/latest-request';
 import { getUsageProfile } from '@/lib/usage-profiles';
 import { scheduleHours, setAllDayUsageSchedule, toggleUsagePeriod, USAGE_PERIODS, updateUsagePeriodHours, type UsagePeriod } from '@/lib/usage-schedule';
 
-const categories = ['ทั้งหมด', ...Array.from(new Set(catalog.map((item) => item.category)))];
 const periodLabels: Record<UsagePeriod, { label: string; range: string }> = {
   morning: { label: 'เช้า', range: '06–12' },
   daytime: { label: 'กลางวัน', range: '12–18' },
@@ -45,7 +47,9 @@ function withHomeSaveLock(task: () => Promise<void>): Promise<void> {
 
 export default function MyHomePage() {
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('ทั้งหมด');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
+  const [catalogState, dispatchCatalog] = useReducer(catalogReducer, initialCatalogState);
   const [homeItems, setHomeItems] = useState<HomeAppliance[]>([]);
   const [ready, setReady] = useState(false);
   const [saveState, setSaveState] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
@@ -53,6 +57,48 @@ export default function MyHomePage() {
   const saveSequence = useRef(0);
   const lastSavedBody = useRef<string | null>(null);
   const ownedPendingBody = useRef<string | null>(null);
+  const catalogRequests = useRef(createLatestRequestTracker());
+
+  const loadCatalog = useCallback(async (page: number, append: boolean) => {
+    const request = catalogRequests.current.begin();
+    dispatchCatalog({ type: 'request', append });
+    try {
+      const response = await fetch(buildCatalogUrl({ q: debouncedQuery, category, page }), {
+        cache: 'no-store',
+        signal: request.signal,
+      });
+      if (!response.ok) throw new Error('catalog load failed');
+      const data = await response.json() as CatalogResponse;
+      if (!catalogRequests.current.isLatest(request.generation)) return;
+      dispatchCatalog({ type: 'success', response: data, append });
+    } catch (error) {
+      if (isAbortError(error) || !catalogRequests.current.isLatest(request.generation)) return;
+      dispatchCatalog({
+        type: 'failure',
+        append,
+        message: append ? 'โหลดรายการเพิ่มเติมไม่สำเร็จ' : 'ไม่สามารถโหลดรายการเครื่องใช้ไฟฟ้าได้',
+      });
+    }
+  }, [category, debouncedQuery]);
+
+  useEffect(() => {
+    catalogRequests.current.cancel();
+    dispatchCatalog({ type: 'reset' });
+    const updateQuery = debounce((value: string) => setDebouncedQuery(value.trim()), 300);
+    updateQuery(query);
+    return updateQuery.cancel;
+  }, [query]);
+
+  useEffect(() => {
+    const requests = catalogRequests.current;
+    dispatchCatalog({ type: 'reset' });
+    if (!isCatalogQueryReady(query, debouncedQuery)) {
+      requests.cancel();
+      return;
+    }
+    void loadCatalog(1, false);
+    return () => requests.cancel();
+  }, [debouncedQuery, loadCatalog, query]);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,20 +172,13 @@ export default function MyHomePage() {
     return scheduleSave.cancel;
   }, [homeItems, ready]);
 
-  const filteredCatalog = useMemo(() => catalog.filter((item) => {
-    const matchCategory = category === 'ทั้งหมด' || item.category === category;
-    return matchCategory && `${item.brand} ${item.model} ${item.name} ${item.detail}`.toLowerCase().includes(query.trim().toLowerCase());
-  }), [category, query]);
-
   const summary = calculateHomeSummary(homeItems);
   const itemEnergyById = new Map(summary.itemCalculations.map((item) => [
     item.instanceId,
     item.calculation.monthlyEnergyKwh,
   ]));
 
-  function addToHome(id: string) {
-    const appliance = catalog.find((item) => item.id === id);
-    if (!appliance) return;
+  function addToHome(appliance: Appliance) {
     setHomeItems((current) => addOrIncrementHomeItem(current, createHomeItem(appliance)));
   }
 
@@ -200,18 +239,25 @@ export default function MyHomePage() {
 
       <section className="builder-workspace">
         <aside className="builder-catalog glass-panel">
-          <header className="builder-panel-heading"><div><span>01</span><h2>เลือกเครื่องใช้ไฟฟ้า</h2></div><em>{filteredCatalog.length} รุ่น</em></header>
-          <label className="builder-search"><i><Search aria-hidden="true" /></i><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหายี่ห้อ รุ่น หรือประเภท..." /></label>
-          <div className="builder-tabs" aria-label="หมวดหมู่เครื่องใช้ไฟฟ้า">{categories.map((item) => <Button variant="ghost" className={category === item ? 'selected' : ''} onClick={() => setCategory(item)} key={item}>{item}</Button>)}</div>
-          <div className="builder-catalog-list">{filteredCatalog.map((item) => <Card
-            className="builder-appliance"
-            key={item.id}
-          >
-            <div className="builder-product-image"><Image src={item.image} alt={`${item.brand} ${item.model}`} width={160} height={120} /></div>
-            <div className="builder-product-copy"><span>{item.brand}</span><b>{item.name}</b><em>{item.detail}</em><small>{item.model}</small></div>
-            <strong>{item.watts === null ? '—' : formatNumber(item.watts)}<small>W</small></strong>
-            <Button variant="ghost" size="icon" onClick={() => addToHome(item.id)} aria-label={`เพิ่ม ${item.name}`}><Plus aria-hidden="true" /></Button>
-          </Card>)}</div>
+          <header className="builder-panel-heading"><div><span>01</span><h2>เลือกเครื่องใช้ไฟฟ้า</h2></div><em>{catalogState.loading ? 'กำลังโหลด' : `${catalogState.pagination.total} รุ่น`}</em></header>
+          <label className="builder-search"><i><Search aria-hidden="true" /></i><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหายี่ห้อ รุ่น หรือประเภท..." aria-label="ค้นหาเครื่องใช้ไฟฟ้า" /></label>
+          <div className="builder-tabs" aria-label="หมวดหมู่เครื่องใช้ไฟฟ้า"><Button variant="ghost" className={category === null ? 'selected' : ''} onClick={() => setCategory(null)}>ทั้งหมด</Button>{catalogState.categories.map((item) => <Button variant="ghost" className={category === item.slug ? 'selected' : ''} onClick={() => setCategory(item.slug)} key={item.slug}>{item.name}</Button>)}</div>
+          {catalogState.loading && <div className="builder-catalog-state" role="status" aria-live="polite"><span className="catalog-spinner" aria-hidden="true" />กำลังโหลดรายการเครื่องใช้ไฟฟ้า...</div>}
+          {!catalogState.loading && catalogState.error && <div className="builder-catalog-state error" role="alert"><b>โหลดแคตตาล็อกไม่สำเร็จ</b><span>{catalogState.error}</span><Button variant="outline" onClick={() => void loadCatalog(1, false)}>ลองอีกครั้ง</Button></div>}
+          {!catalogState.loading && !catalogState.error && catalogState.items.length === 0 && <div className="builder-catalog-state" role="status"><b>ไม่พบเครื่องใช้ไฟฟ้า</b><span>ลองคำค้นหาอื่น หรือเลือกหมวดทั้งหมด</span></div>}
+          {!catalogState.loading && !catalogState.error && catalogState.items.length > 0 && <>
+            <div className="builder-catalog-list">{catalogState.items.map((item) => {
+              const energy = item.energySpec ? formatCatalogEnergySpec(item.energySpec) : null;
+              return <Card className="builder-appliance" key={item.id}>
+                <div className="builder-product-image"><Image src={item.image} alt={`${item.brand} ${item.model}`} width={160} height={120} /></div>
+                <div className="builder-product-copy"><span>{item.brand}</span><b>{item.name}</b><em>{item.detail}</em><small>{item.model}</small></div>
+                <strong>{energy?.value ?? '—'}<small>{energy?.unit ?? 'ไม่มีข้อมูล'}</small></strong>
+                <Button variant="ghost" size="icon" onClick={() => addToHome(item)} aria-label={`เพิ่ม ${item.name}`}><Plus aria-hidden="true" /></Button>
+              </Card>;
+            })}</div>
+            {catalogState.loadMoreError && <p className="builder-load-more-error" role="alert">{catalogState.loadMoreError} <Button variant="ghost" onClick={() => void loadCatalog(catalogState.pagination.page + 1, true)}>ลองอีกครั้ง</Button></p>}
+            {catalogState.pagination.hasMore && <Button className="builder-load-more" variant="outline" disabled={catalogState.loadingMore} onClick={() => void loadCatalog(catalogState.pagination.page + 1, true)}>{catalogState.loadingMore ? 'กำลังโหลด...' : 'โหลดเพิ่ม'}</Button>}
+          </>}
         </aside>
 
         <section className="builder-home glass-panel">

@@ -1,12 +1,13 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { ArrowRight, Banknote, Bell, ChevronRight, Gauge, Pencil, Plus, Sparkles, Target, Trash2, X, Zap } from 'lucide-react';
 import { WattWiseSidebar } from './components/WattWiseSidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { calculateDailyLoadProfile, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
+import { createLatestRequestTracker, isAbortError } from '@/lib/latest-request';
 import { formatBillingMonthLabel, getBillingMonth, selectRecentRecords, type MonthlyEnergyRecord } from '@/lib/monthly-history';
 
 function formatNumber(value: number, digits = 0) {
@@ -24,32 +25,36 @@ export default function Home() {
   const [billEditingMonth, setBillEditingMonth] = useState<string | null>(null);
   const [billError, setBillError] = useState('');
   const [billSaving, setBillSaving] = useState(false);
+  const dashboardRequests = useRef(createLatestRequestTracker());
+
+  const refreshHome = useCallback(async () => {
+    const request = dashboardRequests.current.begin();
+    try {
+      const response = await fetch('/api/home', { cache: 'no-store', signal: request.signal });
+      if (!response.ok) throw new Error('load failed');
+      const data = await response.json() as { items: HomeAppliance[]; history?: MonthlyEnergyRecord[] };
+      if (!dashboardRequests.current.isLatest(request.generation)) return;
+      setHomeItems(data.items);
+      setHistory(data.history ?? []);
+    } catch (error) {
+      if (isAbortError(error) || !dashboardRequests.current.isLatest(request.generation)) return;
+    } finally {
+      if (dashboardRequests.current.isLatest(request.generation)) setHomeLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    async function refreshHome() {
-      try {
-        const response = await fetch('/api/home', { cache: 'no-store' });
-        if (!response.ok) throw new Error('load failed');
-         const data = await response.json() as { items: HomeAppliance[]; history?: MonthlyEnergyRecord[] };
-         if (active) {
-           setHomeItems(data.items);
-           setHistory(data.history ?? []);
-         }
-      } finally {
-        if (active) setHomeLoading(false);
-      }
-    }
+    const requests = dashboardRequests.current;
     const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refreshHome(); };
     void refreshHome();
     window.addEventListener('focus', refreshHome);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
-      active = false;
+      requests.cancel();
       window.removeEventListener('focus', refreshHome);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, []);
+  }, [refreshHome]);
 
   const summary = useMemo(() => calculateHomeSummary(homeItems), [homeItems]);
   const itemEnergyById = useMemo(() => new Map(summary.itemCalculations.map((item) => [
@@ -103,8 +108,10 @@ export default function Home() {
       });
       const data = await response.json() as { records?: MonthlyEnergyRecord[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? 'บันทึกบิลจริงไม่สำเร็จ');
+      dashboardRequests.current.cancel();
       setHistory(data.records ?? []);
       setBillFormOpen(false);
+      await refreshHome();
     } catch (error) {
       setBillError(error instanceof Error ? error.message : 'บันทึกบิลจริงไม่สำเร็จ');
     } finally {
@@ -119,7 +126,9 @@ export default function Home() {
       const response = await fetch(`/api/bills?month=${encodeURIComponent(month)}`, { method: 'DELETE' });
       const data = await response.json() as { records?: MonthlyEnergyRecord[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? 'ลบบิลจริงไม่สำเร็จ');
+      dashboardRequests.current.cancel();
       setHistory(data.records ?? []);
+      await refreshHome();
     } catch (error) {
       setBillError(error instanceof Error ? error.message : 'ลบบิลจริงไม่สำเร็จ');
     }
