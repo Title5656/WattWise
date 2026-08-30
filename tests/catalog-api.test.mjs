@@ -21,12 +21,12 @@ function createDatabase() {
       brand_id INTEGER NOT NULL,
       model_code TEXT NOT NULL,
       display_name TEXT NOT NULL,
-      calculation_method TEXT NOT NULL,
+      calculation_method TEXT,
       rated_power_w REAL,
       annual_energy_kwh REAL,
       energy_per_cycle_kwh REAL,
       load_factor REAL,
-      usage_profile TEXT NOT NULL,
+      usage_profile TEXT,
       capacity_value REAL,
       capacity_unit TEXT,
       efficiency_label TEXT,
@@ -57,6 +57,9 @@ function createDatabase() {
   for (const row of rows) insert.run(...row);
 
   return {
+    execute(sql) {
+      sqlite.exec(sql);
+    },
     prepare(sql) {
       return {
         bind(...values) {
@@ -80,6 +83,22 @@ async function response(query = '', db = createDatabase()) {
   assert.equal(typeof handler, 'function', 'catalog GET handler is exported');
   const result = await handler(request(query));
   return { status: result.status, body: await result.json() };
+}
+
+async function expectCatalogServerError(db, expectedLog) {
+  const originalError = console.error;
+  const logs = [];
+  console.error = (...args) => logs.push(args);
+  try {
+    const result = await response('', db);
+    assert.equal(result.status, 500);
+    assert.deepEqual(result.body, { error: 'ไม่สามารถโหลดแคตตาล็อกได้' });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], 'Unable to read catalog');
+  assert.match(String(logs[0][1]), expectedLog);
 }
 
 test('catalog defaults to the first 24 active records and returns active category metadata', async () => {
@@ -155,13 +174,44 @@ test('catalog maps nullable energy columns to honest energy specs and surface so
   assert.deepEqual(byId.get('fridge-bravo-a').source, { name: 'EGAT', url: 'https://example.test/fridge', verifiedAt: 101, confidence: 'high' });
 });
 
+test('catalog rejects null and unknown usage profiles instead of inventing one', async () => {
+  for (const statement of [
+    "UPDATE appliance_models SET usage_profile = NULL WHERE catalog_key = 'fan-alpha-a'",
+    "UPDATE appliance_models SET usage_profile = 'unknown_profile' WHERE catalog_key = 'fan-alpha-a'",
+  ]) {
+    const db = createDatabase();
+    db.execute(statement);
+    await expectCatalogServerError(db, /usage_profile/);
+  }
+});
+
+test('catalog rejects unknown and null calculation method discriminators', async () => {
+  for (const statement of [
+    "UPDATE appliance_models SET calculation_method = 'unexpected' WHERE catalog_key = 'fan-alpha-a'",
+    "UPDATE appliance_models SET calculation_method = NULL WHERE catalog_key = 'fan-alpha-a'",
+  ]) {
+    const db = createDatabase();
+    db.execute(statement);
+    await expectCatalogServerError(db, /calculation_method/);
+  }
+});
+
 test('catalog reports an unavailable D1 binding as a server error', async () => {
   const handler = catalogApi.createCatalogGetHandler?.(() => {
     throw new Error('D1 binding DB is unavailable');
   });
   assert.equal(typeof handler, 'function', 'catalog GET handler is exported');
-  const result = await handler(request());
-
-  assert.equal(result.status, 500);
-  assert.deepEqual(await result.json(), { error: 'ไม่สามารถโหลดแคตตาล็อกได้' });
+  const originalError = console.error;
+  const logs = [];
+  console.error = (...args) => logs.push(args);
+  try {
+    const result = await handler(request());
+    assert.equal(result.status, 500);
+    assert.deepEqual(await result.json(), { error: 'ไม่สามารถโหลดแคตตาล็อกได้' });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], 'Unable to read catalog');
+  assert.match(String(logs[0][1]), /D1 binding DB is unavailable/);
 });

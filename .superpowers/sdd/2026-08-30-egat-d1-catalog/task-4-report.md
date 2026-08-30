@@ -24,3 +24,14 @@
 ## Review
 
 Self-review found no blocking issues. The schema has no separate category sort-order column, so the stable database category position (`c.id`) is used as the category tie-breaker after `m.sort_order`; the seeded category creation order is deterministic.
+
+## Review-fix round 1
+
+- Updated the deterministic fixture so `usage_profile` is nullable like production, then added null and unknown profile regression cases.
+- Changed catalog row decoding to reject null/unknown `usage_profile` values and null/unknown `calculation_method` values. Invalid rows now follow the controlled internal-error path and never invent a profile or rated-power specification.
+- Captured and asserted the expected error log in all malformed-D1 tests, restoring `console.error` in `finally`; the focused test output is now pristine.
+
+### TDD evidence
+
+- RED: `node --experimental-strip-types --test tests/catalog-api.test.mjs` passed 8/10 and failed the two new malformed-row cases with `200 !== 500`.
+- GREEN: the same focused command passed 10/10 after explicit decoding guards were added.

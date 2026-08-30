@@ -1,7 +1,7 @@
 import { imageForCategory } from './catalog-images.ts';
 import type { Appliance } from './home-config.ts';
 import type { ApplianceEnergySpec, CalculationConfidence } from './energy.ts';
-import type { UsageProfileId } from './usage-profiles.ts';
+import { usageProfiles, type UsageProfileId } from './usage-profiles.ts';
 
 export type CatalogCategory = {
   slug: string;
@@ -36,12 +36,12 @@ type CatalogRow = {
   brand: string;
   model: string;
   displayName: string;
-  calculationMethod: ApplianceEnergySpec['calculationMethod'];
+  calculationMethod: string | null;
   ratedPowerW: number | null;
   annualEnergyKwh: number | null;
   energyPerCycleKwh: number | null;
   loadFactor: number | null;
-  usageProfile: UsageProfileId;
+  usageProfile: string | null;
   capacityValue: number | null;
   capacityUnit: string | null;
   efficiencyLabel: string | null;
@@ -64,17 +64,26 @@ function energySpec(row: CatalogRow): ApplianceEnergySpec {
     return value;
   };
   switch (row.calculationMethod) {
-    case 'annual_energy':
-      return { calculationMethod: 'annual_energy', annualEnergyKwh: required(row.annualEnergyKwh, 'annual_energy_kwh') };
-    case 'per_cycle':
-      return { calculationMethod: 'per_cycle', energyPerCycleKwh: required(row.energyPerCycleKwh, 'energy_per_cycle_kwh') };
-    default:
+    case 'rated_power':
       return {
         calculationMethod: 'rated_power',
         ratedPowerW: required(row.ratedPowerW, 'rated_power_w'),
         loadFactor: row.loadFactor,
       };
+    case 'annual_energy':
+      return { calculationMethod: 'annual_energy', annualEnergyKwh: required(row.annualEnergyKwh, 'annual_energy_kwh') };
+    case 'per_cycle':
+      return { calculationMethod: 'per_cycle', energyPerCycleKwh: required(row.energyPerCycleKwh, 'energy_per_cycle_kwh') };
+    default:
+      throw new Error(`Active catalog row ${row.catalogKey} has an invalid calculation_method`);
   }
+}
+
+function usageProfile(row: CatalogRow): UsageProfileId {
+  if (typeof row.usageProfile !== 'string' || !Object.hasOwn(usageProfiles, row.usageProfile)) {
+    throw new Error(`Active catalog row ${row.catalogKey} has an invalid usage_profile`);
+  }
+  return row.usageProfile as UsageProfileId;
 }
 
 function detail(row: CatalogRow) {
@@ -85,6 +94,8 @@ function detail(row: CatalogRow) {
 }
 
 function mapRow(row: CatalogRow): Appliance {
+  const spec = energySpec(row);
+  const usageProfileId = usageProfile(row);
   return {
     id: row.catalogKey,
     category: row.categoryName,
@@ -94,8 +105,8 @@ function mapRow(row: CatalogRow): Appliance {
     name: row.displayName,
     detail: detail(row),
     watts: row.calculationMethod === 'rated_power' ? row.ratedPowerW : null,
-    energySpec: energySpec(row),
-    usageProfileId: row.usageProfile,
+    energySpec: spec,
+    usageProfileId,
     image: imageForCategory(row.categorySlug),
     capacityValue: row.capacityValue,
     capacityUnit: row.capacityUnit,
