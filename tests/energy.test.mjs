@@ -296,6 +296,12 @@ test('resolves realistic usage profiles for the catalog', () => {
   assert.equal(heater.hoursPerDay, 0.25);
 });
 
+test('does not add a 100th appliance unit beyond the save contract maximum', () => {
+  const result = addOrIncrementHomeItem([homeItem({ quantity: 99 })], homeItem({ instanceId: 'fan-2' }));
+
+  assert.equal(result[0].quantity, 99);
+});
+
 test('resolves a model annual-energy spec ahead of its category profile defaults', () => {
   const refrigerator = createHomeItem({
     ...fan,
@@ -592,4 +598,11 @@ test('keeps an empty stepper draft empty instead of coercing it to zero', () => 
   assert.equal(parseStepperInput('', { min: 1, step: 1 }), null);
   assert.equal(parseStepperInput('  ', { min: 0, step: 0.5 }), null);
   assert.equal(parseStepperInput('12', { min: 1, step: 1 }), 12);
+});
+
+test('snaps typed quantity values to integer bounds before My Home saves them', () => {
+  const quantityOptions = { min: 1, max: 99, step: 1 };
+
+  assert.equal(parseStepperInput('1.5', quantityOptions), 2);
+  assert.equal(parseStepperInput('100', quantityOptions), 99);
 });

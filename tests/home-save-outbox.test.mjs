@@ -30,6 +30,22 @@ function item(id) {
   };
 }
 
+function quotaFailingStorage() {
+  const values = new Map();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      if (key === outbox.HOME_SAVE_OUTBOX_KEY) {
+        const error = new Error('Quota exceeded');
+        error.name = 'QuotaExceededError';
+        throw error;
+      }
+      values.set(key, value);
+    },
+    removeItem: (key) => values.delete(key),
+  };
+}
+
 function envelope(body, version = 2) {
   return JSON.stringify({ version, body });
 }
@@ -89,6 +105,18 @@ test('migrates a valid v1 rice-cooker body to the v2 retry envelope', () => {
     version: 2,
     body: migratedBody,
   });
+});
+
+test('keeps a valid v1 retry body when writing its v2 migration exceeds quota', () => {
+  const localStorage = quotaFailingStorage();
+  const legacy = item('legacy-quota');
+  localStorage.setItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY, JSON.stringify({ items: [legacy] }));
+
+  const retryBody = outbox.readPendingHomeSave(localStorage);
+
+  assert.equal(retryBody, JSON.stringify({ items: [legacy] }));
+  assert.equal(localStorage.getItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY), retryBody);
+  assert.equal(localStorage.getItem(outbox.HOME_SAVE_OUTBOX_KEY), null);
 });
 
 test('accepts nullable watts with annual and per-cycle energy specs', () => {

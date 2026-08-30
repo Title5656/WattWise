@@ -98,7 +98,7 @@ export function addOrIncrementHomeItem(items: HomeAppliance[], item: HomeApplian
   if (existingIndex === -1) return [...items, item];
 
   return items.map((entry, index) => index === existingIndex
-    ? { ...entry, quantity: entry.quantity + 1 }
+    ? { ...entry, quantity: Math.min(99, Math.max(1, Math.round(entry.quantity)) + 1) }
     : entry);
 }
 
@@ -227,7 +227,7 @@ export function hydrateHomeItem(row: {
 }, appliance: Appliance): HomeAppliance {
   const profile = getUsageProfile(appliance.usageProfileId);
   const usageSchedule = appliance.usageProfileId === 'rice_cooker_hours'
-    ? parseRiceCookerSchedule(row.usageSchedule)
+    ? parseRiceCookerSchedule(row.usageSchedule, row.hoursPerDay)
     : parseUsageSchedule(row.usageSchedule, appliance.usageProfileId, row.hoursPerDay);
   return {
     ...appliance,
@@ -241,14 +241,17 @@ export function hydrateHomeItem(row: {
   };
 }
 
-function parseRiceCookerSchedule(raw: string | null | undefined): UsageSchedule {
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as { kind?: unknown };
-      if (parsed?.kind === 'hours') return normalizeUsageSchedule(parsed, 'rice_cooker_hours');
-    } catch {
-      // Legacy or malformed saved rows use the current catalog default below.
-    }
+function parseRiceCookerSchedule(raw: string | null | undefined, legacyHours: number): UsageSchedule {
+  if (!raw) {
+    return Number.isFinite(legacyHours)
+      ? usageScheduleFromLegacyHours('rice_cooker_hours', legacyHours)
+      : createDefaultUsageSchedule('rice_cooker_hours');
+  }
+  try {
+    const parsed = JSON.parse(raw) as { kind?: unknown };
+    if (parsed?.kind === 'hours') return normalizeUsageSchedule(parsed, 'rice_cooker_hours');
+  } catch {
+    // Incompatible legacy schedules use the current catalog default below.
   }
   return createDefaultUsageSchedule('rice_cooker_hours');
 }

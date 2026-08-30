@@ -132,14 +132,14 @@ export function readPendingHomeSave(storage: StorageLike): string | null {
       storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
       return null;
     }
-    storage.setItem(HOME_SAVE_OUTBOX_KEY, JSON.stringify({ version: 2, body: migratedBody } satisfies Envelope));
+    try {
+      storage.setItem(HOME_SAVE_OUTBOX_KEY, JSON.stringify({ version: 2, body: migratedBody } satisfies Envelope));
+    } catch {
+      return migratedBody;
+    }
     storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
     return migratedBody;
   } catch {
-    try {
-      storage.removeItem(HOME_SAVE_OUTBOX_KEY);
-      storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
-    } catch { /* ignore unavailable storage */ }
     return null;
   }
 }

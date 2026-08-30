@@ -55,3 +55,20 @@ test('maps incompatible legacy rice-cooker schedules to one morning hour', async
     hoursByPeriod: { night: 0, morning: 1, daytime: 0, evening: 0 },
   });
 });
+
+test('hydrates a null rice-cooker schedule from valid legacy hours', async () => {
+  const { db, sqlite } = createHomeDatabase();
+  insertSaved(sqlite, {
+    applianceKey: 'legacy-rice',
+    hoursPerDay: 2,
+    usageSchedule: null,
+  });
+
+  const [item] = await homeStorage.readSavedHomeItems(db);
+
+  assert.equal(item.hoursPerDay, 2);
+  assert.deepEqual(item.usageSchedule, {
+    kind: 'hours',
+    hoursByPeriod: { night: 0, morning: 2, daytime: 0, evening: 0 },
+  });
+});

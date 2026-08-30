@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { NumberStepper } from '@/components/ui/number-stepper';
 import { debounce } from '@/lib/debounce';
 import { clearPendingHomeSave, readPendingHomeSave, stagePendingHomeSave } from '@/lib/home-save-outbox';
-import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, createHomeItem, getHomeUsageSchedule, mergeHomeItems, type HomeAppliance } from '@/lib/home-config';
+import { addOrIncrementHomeItem, applianceCatalog as catalog, calculateHomeSummary, createHomeItem, getHomeUsageSchedule, type HomeAppliance } from '@/lib/home-config';
 import { getUsageProfile } from '@/lib/usage-profiles';
 import { scheduleHours, setAllDayUsageSchedule, toggleUsagePeriod, USAGE_PERIODS, updateUsagePeriodHours, type UsagePeriod } from '@/lib/usage-schedule';
 
@@ -63,7 +63,7 @@ export default function MyHomePage() {
         const pending = JSON.parse(pendingBody) as { items: HomeAppliance[] };
         void Promise.resolve().then(() => {
           if (cancelled) return;
-          setHomeItems(mergeHomeItems(pending.items));
+          setHomeItems(pending.items);
           setReady(true);
           setSaveState('saving');
         });
@@ -79,7 +79,7 @@ export default function MyHomePage() {
         .then((data) => {
           if (cancelled) return;
           lastSavedBody.current = JSON.stringify({ items: data.items });
-          setHomeItems(mergeHomeItems(data.items));
+          setHomeItems(data.items);
           setReady(true);
           setSaveState('saved');
         })
@@ -93,11 +93,11 @@ export default function MyHomePage() {
     const sequence = ++saveSequence.current;
     const body = JSON.stringify({ items: homeItems });
     const storage = getHomeSaveStorage();
-    if (storage) stagePendingHomeSave(storage, body);
     if (body === lastSavedBody.current) {
       setSaveState('saved');
       return;
     }
+    if (storage) stagePendingHomeSave(storage, body);
     const scheduleSave = debounce((snapshot: HomeAppliance[]) => {
       setSaveState('saving');
       saveQueue.current = saveQueue.current.catch(() => undefined).then(() => withHomeSaveLock(async () => {
@@ -137,12 +137,10 @@ export default function MyHomePage() {
   }
 
   function updateItem(instanceId: string, field: 'quantity' | 'cyclesPerMonth', value: number) {
-    const maximum = field === 'cyclesPerMonth' ? 310 : undefined;
-    const minimum = field === 'quantity' ? 1 : 0;
     setHomeItems((current) => current.map((item) => item.instanceId === instanceId
-      ? { ...item, [field]: maximum === undefined
-        ? Math.max(minimum, Number.isFinite(value) ? value : minimum)
-        : Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : minimum)) }
+      ? { ...item, [field]: field === 'quantity'
+        ? Math.min(99, Math.max(1, Math.round(Number.isFinite(value) ? value : 1)))
+        : Math.max(0, Math.min(310, Number.isFinite(value) ? value : 0)) }
       : item));
   }
 
@@ -219,7 +217,7 @@ export default function MyHomePage() {
                 const schedule = getHomeUsageSchedule(item);
                 return <Card className="builder-home-item" key={item.instanceId}>
                   <div className="builder-home-item-head"><div className="builder-home-image"><Image src={item.image} alt="" width={88} height={88} /></div><div className="builder-item-name"><span>{item.brand}</span><b>{item.name}</b><small>{item.model}</small><em>{profile.description}</em></div><Button variant="ghost" size="icon" onClick={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} aria-label={`ลบ ${item.name}`}><Trash2 aria-hidden="true" /></Button></div>
-                  <div className="builder-home-item-controls"><NumberStepper label="จำนวน" unit="เครื่อง" value={item.quantity} min={1} step={1} onChange={(value) => updateItem(item.instanceId, 'quantity', value)} onEmpty={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} />{profile.inputKind === 'cycles' && <NumberStepper label="รอบ / เดือน" unit="รอบ" value={item.cyclesPerMonth ?? profile.defaultCyclesPerMonth ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'cyclesPerMonth', value)} onEmpty={() => updateItem(item.instanceId, 'cyclesPerMonth', 0)} />}{profile.inputKind === 'fixed' && <div className="builder-fixed-usage"><b>24 ชม. / วัน</b><span>คิดตาม duty cycle</span></div>}<div className="builder-item-energy"><b>{formatNumber(kwh, 1)}</b><span>kWh / เดือน</span></div></div>
+                  <div className="builder-home-item-controls"><NumberStepper label="จำนวน" unit="เครื่อง" value={item.quantity} min={1} max={99} step={1} onChange={(value) => updateItem(item.instanceId, 'quantity', value)} onEmpty={() => setHomeItems((current) => current.filter((entry) => entry.instanceId !== item.instanceId))} />{profile.inputKind === 'cycles' && <NumberStepper label="รอบ / เดือน" unit="รอบ" value={item.cyclesPerMonth ?? profile.defaultCyclesPerMonth ?? 0} min={profile.min} max={profile.max} step={profile.step} onChange={(value) => updateItem(item.instanceId, 'cyclesPerMonth', value)} onEmpty={() => updateItem(item.instanceId, 'cyclesPerMonth', 0)} />}{profile.inputKind === 'fixed' && <div className="builder-fixed-usage"><b>24 ชม. / วัน</b><span>คิดตาม duty cycle</span></div>}<div className="builder-item-energy"><b>{formatNumber(kwh, 1)}</b><span>kWh / เดือน</span></div></div>
                   <div className="builder-usage-schedule"><div className="builder-usage-schedule-header"><span>ช่วงที่ใช้งาน</span>{profile.inputKind === 'hours' && <><small>รวม {formatNumber(scheduleHours(schedule), 2)} ชม. / วัน</small><button type="button" onClick={() => setAllDay(item.instanceId)}>ตั้งเป็นทั้งวัน</button></>}{profile.inputKind === 'fixed' && <small>เปิดตลอดวัน</small>}{profile.inputKind === 'cycles' && <small>เลือกช่วงที่มักใช้งาน</small>}</div><div className="builder-period-chips">{USAGE_PERIODS.map((period) => {
                     const meta = periodLabels[period];
                     const selected = schedule.kind === 'all_day' || (schedule.kind === 'hours' ? schedule.hoursByPeriod[period] > 0 : schedule.periods.includes(period));
