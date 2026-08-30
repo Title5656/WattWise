@@ -400,6 +400,34 @@ test('conserves per-cycle model energy across an hourly schedule', () => {
   assert.ok(Math.abs(profile.reduce((sum, kw) => sum + kw * 2, 0) - calculation.dailyEnergyKwh) < 1e-12);
 });
 
+test('falls back to an all-day curve for direct model energy with a zero-hour schedule', () => {
+  const zeroHours = { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 0 } };
+  const annual = {
+    ...createHomeItem({ ...fan, id: 'annual-zero-hours', energySpec: { calculationMethod: 'annual_energy', annualEnergyKwh: 720 } }),
+    usageSchedule: zeroHours,
+  };
+  const perCycle = {
+    ...createHomeItem({ ...fan, id: 'per-cycle-zero-hours', energySpec: { calculationMethod: 'per_cycle', energyPerCycleKwh: 1.5 } }),
+    cyclesPerMonth: 40,
+    usageSchedule: zeroHours,
+  };
+  const rated = {
+    ...createHomeItem({ ...fan, id: 'rated-zero-hours', energySpec: { calculationMethod: 'rated_power', ratedPowerW: 1_000 } }),
+    usageSchedule: zeroHours,
+  };
+
+  for (const item of [annual, perCycle]) {
+    const calculation = calculateEnergy(resolveEnergyInput(item));
+    const profile = calculateDailyLoadProfile([item]);
+
+    assert.equal(calculation.dailyEnergyKwh, 2);
+    assert.ok(profile.every((kw) => Math.abs(kw - calculation.dailyEnergyKwh / 24) < 1e-12));
+    assert.ok(Math.abs(profile.reduce((sum, kw) => sum + kw * 2, 0) - calculation.dailyEnergyKwh) < 1e-12);
+  }
+
+  assert.deepEqual(calculateDailyLoadProfile([rated]), Array(12).fill(0));
+});
+
 test('uses the rice cooker hourly profile with a one-hour morning default', () => {
   const riceCooker = createHomeItem(applianceCatalog.find((item) => item.id === 'rice-sharp-com18'));
 

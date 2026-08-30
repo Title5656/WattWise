@@ -150,6 +150,10 @@ export function calculateDailyLoadProfile(items: HomeAppliance[]): number[] {
           for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
             periodEnergy[period] = calculation.dailyEnergyKwh * schedule.hoursByPeriod[period] / totalHours;
           }
+        } else {
+          for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
+            periodEnergy[period] = calculation.dailyEnergyKwh / 4;
+          }
         }
       } else {
         const loadFactor = input.loadFactor ?? 1;
