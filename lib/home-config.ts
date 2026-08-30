@@ -3,6 +3,7 @@ import {
   calculateEnergy,
   calculateElectricityBill,
   type ApplianceEnergySpec,
+  type CalculationConfidence,
   type EnergyCalculationResult,
   type ElectricityBillResult,
 } from './energy.ts';
@@ -19,14 +20,24 @@ import {
 export type Appliance = {
   id: string;
   category: string;
+  categorySlug?: string;
   brand: string;
   model: string;
   name: string;
   detail: string;
-  watts: number;
+  watts: number | null;
   energySpec?: ApplianceEnergySpec;
   usageProfileId: UsageProfileId;
   image: string;
+  capacityValue?: number | null;
+  capacityUnit?: string | null;
+  efficiencyLabel?: string | null;
+  source?: {
+    name: string | null;
+    url: string | null;
+    verifiedAt: number | null;
+    confidence: CalculationConfidence;
+  };
 };
 
 export type HomeAppliance = Appliance & {
@@ -69,7 +80,7 @@ export function resolveEnergyInput(item: HomeAppliance) {
   const profile = getUsageProfile(item.usageProfileId);
   const usageSchedule = item.usageSchedule ?? usageScheduleFromLegacyHours(item.usageProfileId, item.hoursPerDay);
   return resolveProfileEnergyInput(profile, {
-    ratedPowerW: item.watts,
+    ratedPowerW: item.watts ?? 0,
     quantity: item.quantity,
     hoursPerDay: profile.inputKind === 'hours' ? scheduleHours(usageSchedule) : item.hoursPerDay,
     cyclesPerMonth: item.cyclesPerMonth,
@@ -157,7 +168,7 @@ export function calculateDailyLoadProfile(items: HomeAppliance[]): number[] {
         }
       } else {
         const loadFactor = input.loadFactor ?? 1;
-        const ratedLoadKw = (input.ratedPowerW ?? item.watts) * Math.max(1, Math.round(item.quantity)) / 1000;
+        const ratedLoadKw = (input.ratedPowerW ?? item.watts ?? 0) * Math.max(1, Math.round(item.quantity)) / 1000;
         for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
           periodEnergy[period] = ratedLoadKw * loadFactor * schedule.hoursByPeriod[period];
         }

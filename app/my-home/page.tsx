@@ -204,7 +204,7 @@ export default function MyHomePage() {
           >
             <div className="builder-product-image"><Image src={item.image} alt={`${item.brand} ${item.model}`} width={160} height={120} /></div>
             <div className="builder-product-copy"><span>{item.brand}</span><b>{item.name}</b><em>{item.detail}</em><small>{item.model}</small></div>
-            <strong>{formatNumber(item.watts)}<small>W</small></strong>
+            <strong>{item.watts === null ? '—' : formatNumber(item.watts)}<small>W</small></strong>
             <Button variant="ghost" size="icon" onClick={() => addToHome(item.id)} aria-label={`เพิ่ม ${item.name}`}><Plus aria-hidden="true" /></Button>
           </Card>)}</div>
         </aside>
