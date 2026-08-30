@@ -84,6 +84,6 @@ export function resolveProfileEnergyInput(
     hoursPerDay: profile.inputKind === 'fixed' ? profile.defaultHoursPerDay : input.hoursPerDay,
     cyclesPerMonth: profile.inputKind === 'cycles' ? input.cyclesPerMonth : null,
     energyPerCycleKwh: profile.energyPerCycleKwh,
-    loadFactor: ratedPowerSpec?.loadFactor ?? profile.loadFactor,
+    loadFactor: profile.loadFactor,
   };
 }

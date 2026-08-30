@@ -337,6 +337,19 @@ test('resolves a model rated-power spec through its load-factor profile', () => 
   assert.equal(calculateEnergy(input).dailyEnergyKwh, 2.4);
 });
 
+test('keeps the profile load factor when a rated-power model spec also supplies one', () => {
+  const ac = createHomeItem({
+    ...fan,
+    id: 'rated-load-factor-model',
+    usageProfileId: 'inverter_ac',
+    energySpec: { calculationMethod: 'rated_power', ratedPowerW: 1_000, loadFactor: 0.2 },
+  });
+  const input = resolveEnergyInput({ ...ac, usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 4 } } });
+
+  assert.equal(input.loadFactor, 0.6);
+  assert.equal(calculateEnergy(input).dailyEnergyKwh, 2.4);
+});
+
 test('uses a model rated-power spec when distributing hourly load', () => {
   const ac = createHomeItem({
     ...fan,
@@ -350,6 +363,41 @@ test('uses a model rated-power spec when distributing hourly load', () => {
   }]);
 
   assert.ok(profile.slice(9, 12).every((kw) => Math.abs(kw - 0.4) < 1e-12));
+});
+
+test('conserves annual model energy across an hourly schedule', () => {
+  const appliance = createHomeItem({
+    ...fan,
+    id: 'annual-hourly-model',
+    energySpec: { calculationMethod: 'annual_energy', annualEnergyKwh: 720 },
+  });
+  const item = {
+    ...appliance,
+    usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 1, daytime: 0, evening: 3 } },
+  };
+  const calculation = calculateEnergy(resolveEnergyInput(item));
+  const profile = calculateDailyLoadProfile([item]);
+
+  assert.equal(calculation.dailyEnergyKwh, 2);
+  assert.ok(Math.abs(profile.reduce((sum, kw) => sum + kw * 2, 0) - calculation.dailyEnergyKwh) < 1e-12);
+});
+
+test('conserves per-cycle model energy across an hourly schedule', () => {
+  const appliance = createHomeItem({
+    ...fan,
+    id: 'per-cycle-hourly-model',
+    energySpec: { calculationMethod: 'per_cycle', energyPerCycleKwh: 1.5 },
+  });
+  const item = {
+    ...appliance,
+    cyclesPerMonth: 40,
+    usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 1, daytime: 0, evening: 3 } },
+  };
+  const calculation = calculateEnergy(resolveEnergyInput(item));
+  const profile = calculateDailyLoadProfile([item]);
+
+  assert.equal(calculation.dailyEnergyKwh, 2);
+  assert.ok(Math.abs(profile.reduce((sum, kw) => sum + kw * 2, 0) - calculation.dailyEnergyKwh) < 1e-12);
 });
 
 test('uses the rice cooker hourly profile with a one-hour morning default', () => {

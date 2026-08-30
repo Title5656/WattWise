@@ -144,10 +144,19 @@ export function calculateDailyLoadProfile(items: HomeAppliance[]): number[] {
     }
 
     if (schedule.kind === 'hours') {
-      const loadFactor = input.loadFactor ?? 1;
-      const ratedLoadKw = (input.ratedPowerW ?? item.watts) * Math.max(1, Math.round(item.quantity)) / 1000;
-      for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
-        periodEnergy[period] = ratedLoadKw * loadFactor * schedule.hoursByPeriod[period];
+      if (input.method === 'annual_energy' || input.method === 'per_cycle') {
+        const totalHours = scheduleHours(schedule);
+        if (totalHours > 0) {
+          for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
+            periodEnergy[period] = calculation.dailyEnergyKwh * schedule.hoursByPeriod[period] / totalHours;
+          }
+        }
+      } else {
+        const loadFactor = input.loadFactor ?? 1;
+        const ratedLoadKw = (input.ratedPowerW ?? item.watts) * Math.max(1, Math.round(item.quantity)) / 1000;
+        for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
+          periodEnergy[period] = ratedLoadKw * loadFactor * schedule.hoursByPeriod[period];
+        }
       }
     } else {
       const selected = schedule.periods;
