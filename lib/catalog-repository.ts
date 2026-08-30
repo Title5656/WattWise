@@ -29,7 +29,7 @@ export type CatalogQuery = {
   pageSize: number;
 };
 
-type CatalogRow = {
+export type CatalogRow = {
   catalogKey: string;
   categorySlug: string;
   categoryName: string;
@@ -60,7 +60,7 @@ function escapedLike(value: string) {
 
 function energySpec(row: CatalogRow): ApplianceEnergySpec {
   const required = (value: number | null, column: string) => {
-    if (value === null) throw new Error(`Active catalog row ${row.catalogKey} is missing ${column}`);
+    if (value === null) throw new Error(`Catalog row ${row.catalogKey} is missing ${column}`);
     return value;
   };
   switch (row.calculationMethod) {
@@ -75,13 +75,14 @@ function energySpec(row: CatalogRow): ApplianceEnergySpec {
     case 'per_cycle':
       return { calculationMethod: 'per_cycle', energyPerCycleKwh: required(row.energyPerCycleKwh, 'energy_per_cycle_kwh') };
     default:
-      throw new Error(`Active catalog row ${row.catalogKey} has an invalid calculation_method`);
+      throw new Error(`Catalog row ${row.catalogKey} has an invalid calculation_method`);
   }
 }
 
 function usageProfile(row: CatalogRow): UsageProfileId {
+  if (row.usageProfile === 'rice_cooker') return 'rice_cooker_hours';
   if (typeof row.usageProfile !== 'string' || !Object.hasOwn(usageProfiles, row.usageProfile)) {
-    throw new Error(`Active catalog row ${row.catalogKey} has an invalid usage_profile`);
+    throw new Error(`Catalog row ${row.catalogKey} has an invalid usage_profile`);
   }
   return row.usageProfile as UsageProfileId;
 }
@@ -93,7 +94,7 @@ function detail(row: CatalogRow) {
   ].filter((value): value is string => Boolean(value)).join(' · ');
 }
 
-function mapRow(row: CatalogRow): Appliance {
+export function mapCatalogRow(row: CatalogRow): Appliance {
   const spec = energySpec(row);
   const usageProfileId = usageProfile(row);
   return {
@@ -120,6 +121,15 @@ function mapRow(row: CatalogRow): Appliance {
   };
 }
 
+const catalogColumns = `m.catalog_key AS catalogKey, c.slug AS categorySlug, c.name_th AS categoryName,
+  b.name AS brand, m.model_code AS model, m.display_name AS displayName,
+  m.calculation_method AS calculationMethod, m.rated_power_w AS ratedPowerW,
+  m.annual_energy_kwh AS annualEnergyKwh, m.energy_per_cycle_kwh AS energyPerCycleKwh,
+  m.load_factor AS loadFactor, m.usage_profile AS usageProfile,
+  m.capacity_value AS capacityValue, m.capacity_unit AS capacityUnit,
+  m.efficiency_label AS efficiencyLabel, m.source_url AS sourceUrl,
+  m.source_name AS sourceName, m.verified_at AS verifiedAt, m.confidence AS confidence`;
+
 function filters(query: CatalogQuery) {
   const clauses = ['m.is_active = 1'];
   const bindings: unknown[] = [];
@@ -144,6 +154,20 @@ async function all<T>(db: D1Database, sql: string, bindings: unknown[] = []) {
   return (await db.prepare(sql).bind(...bindings).all<T>()).results;
 }
 
+export async function readCatalogModelsByKeys(db: D1Database, keys: string[]): Promise<Appliance[]> {
+  const uniqueKeys = [...new Set(keys)];
+  if (uniqueKeys.length === 0) return [];
+  const placeholders = uniqueKeys.map(() => '?').join(', ');
+  const rows = await all<CatalogRow>(db, `
+    SELECT ${catalogColumns}
+    FROM appliance_models m
+    JOIN categories c ON c.id = m.category_id
+    JOIN brands b ON b.id = m.brand_id
+    WHERE m.catalog_key IN (${placeholders})
+  `, uniqueKeys);
+  return rows.map(mapCatalogRow);
+}
+
 export async function readCatalog(db: D1Database, query: CatalogQuery): Promise<CatalogResponse> {
   const { where, bindings } = filters(query);
   const [countRows, itemRows, categoryRows] = await Promise.all([
@@ -155,14 +179,7 @@ export async function readCatalog(db: D1Database, query: CatalogQuery): Promise<
       WHERE ${where}
     `, bindings),
     all<CatalogRow>(db, `
-      SELECT m.catalog_key AS catalogKey, c.slug AS categorySlug, c.name_th AS categoryName,
-        b.name AS brand, m.model_code AS model, m.display_name AS displayName,
-        m.calculation_method AS calculationMethod, m.rated_power_w AS ratedPowerW,
-        m.annual_energy_kwh AS annualEnergyKwh, m.energy_per_cycle_kwh AS energyPerCycleKwh,
-        m.load_factor AS loadFactor, m.usage_profile AS usageProfile,
-        m.capacity_value AS capacityValue, m.capacity_unit AS capacityUnit,
-        m.efficiency_label AS efficiencyLabel, m.source_url AS sourceUrl,
-        m.source_name AS sourceName, m.verified_at AS verifiedAt, m.confidence AS confidence
+      SELECT ${catalogColumns}
       FROM appliance_models m
       JOIN categories c ON c.id = m.category_id
       JOIN brands b ON b.id = m.brand_id
@@ -182,7 +199,7 @@ export async function readCatalog(db: D1Database, query: CatalogQuery): Promise<
   const total = Number(countRows[0]?.total ?? 0);
   const totalPages = total === 0 ? 0 : Math.ceil(total / query.pageSize);
   return {
-    items: itemRows.map(mapRow),
+    items: itemRows.map(mapCatalogRow),
     categories: categoryRows.map((row) => ({ ...row, count: Number(row.count), image: imageForCategory(row.slug) })),
     pagination: {
       page: query.page,

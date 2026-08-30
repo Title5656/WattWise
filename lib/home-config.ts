@@ -11,6 +11,7 @@ import { getResidentialTariff } from './tariffs.ts';
 import { getUsageProfile, resolveProfileEnergyInput, type UsageProfileId } from './usage-profiles.ts';
 import {
   createDefaultUsageSchedule,
+  normalizeUsageSchedule,
   parseUsageSchedule,
   scheduleHours,
   type UsageSchedule,
@@ -223,18 +224,31 @@ export function hydrateHomeItem(row: {
   hoursPerDay: number;
   cyclesPerMonth?: number | null;
   usageSchedule?: string | null;
-}): HomeAppliance | null {
-  const appliance = applianceCatalog.find((item) => item.id === row.applianceKey);
-  if (!appliance) return null;
+}, appliance: Appliance): HomeAppliance {
   const profile = getUsageProfile(appliance.usageProfileId);
+  const usageSchedule = appliance.usageProfileId === 'rice_cooker_hours'
+    ? parseRiceCookerSchedule(row.usageSchedule)
+    : parseUsageSchedule(row.usageSchedule, appliance.usageProfileId, row.hoursPerDay);
   return {
     ...appliance,
     instanceId: `saved-${row.id}`,
     quantity: row.quantity,
-    hoursPerDay: profile.inputKind === 'hours' ? row.hoursPerDay : null,
+    hoursPerDay: profile.inputKind === 'hours' ? scheduleHours(usageSchedule) : null,
     cyclesPerMonth: profile.inputKind === 'cycles'
       ? row.cyclesPerMonth ?? profile.defaultCyclesPerMonth ?? 0
       : null,
-    usageSchedule: parseUsageSchedule(row.usageSchedule, appliance.usageProfileId, row.hoursPerDay),
+    usageSchedule,
   };
+}
+
+function parseRiceCookerSchedule(raw: string | null | undefined): UsageSchedule {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { kind?: unknown };
+      if (parsed?.kind === 'hours') return normalizeUsageSchedule(parsed, 'rice_cooker_hours');
+    } catch {
+      // Legacy or malformed saved rows use the current catalog default below.
+    }
+  }
+  return createDefaultUsageSchedule('rice_cooker_hours');
 }

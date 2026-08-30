@@ -40,6 +40,20 @@ export async function upsertMonthlyEstimate(
   ).bind(householdKey, billingMonth, summary.monthlyKwh, summary.monthlyBill, updatedAt).run();
 }
 
+export async function clearMonthlyEstimate(db: D1Database, householdKey: string, billingMonth: string) {
+  await db.batch([
+    db.prepare(
+      `DELETE FROM monthly_energy_records
+       WHERE household_key = ? AND billing_month = ? AND actual_bill IS NULL`,
+    ).bind(householdKey, billingMonth),
+    db.prepare(
+      `UPDATE monthly_energy_records
+       SET estimated_kwh = NULL, estimated_bill = NULL, estimated_at = NULL
+       WHERE household_key = ? AND billing_month = ?`,
+    ).bind(householdKey, billingMonth),
+  ]);
+}
+
 export async function upsertMonthlyActual(
   db: D1Database,
   householdKey: string,

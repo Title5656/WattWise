@@ -18,3 +18,17 @@ test('keeps home items and summary when monthly history storage is unavailable',
   assert.equal(response.summary.totalUnits, 1);
   assert.deepEqual(response.history, []);
 });
+
+test('keeps an empty home response when clearing stale monthly history fails', async () => {
+  const unavailableDb = {
+    prepare() {
+      throw new Error('no such table: monthly_energy_records');
+    },
+  };
+
+  const response = await readHomeResponse(unavailableDb, 'default-home', [], 0, () => undefined);
+
+  assert.deepEqual(response.items, []);
+  assert.equal(response.summary.totalUnits, 0);
+  assert.deepEqual(response.history, []);
+});
