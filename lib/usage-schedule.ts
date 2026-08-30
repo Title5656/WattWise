@@ -37,7 +37,7 @@ function clampHours(value: number, step: number) {
 }
 
 function isCycleProfile(profileId: UsageProfileId) {
-  return profileId === 'washing_machine' || profileId === 'rice_cooker';
+  return profileId === 'washing_machine';
 }
 
 function preferredPeriods(profileId: UsageProfileId): UsagePeriod[] {
@@ -61,7 +61,7 @@ export function createDefaultUsageSchedule(profileId: UsageProfileId): UsageSche
     case 'fan': return hoursSchedule({ night: 6, evening: 2 }, step);
     case 'water_heater': return hoursSchedule({ morning: 0.25 }, step);
     case 'microwave': return hoursSchedule({ evening: 0.25 }, step);
-    case 'rice_cooker': return { kind: 'periods', periods: ['morning'] };
+    case 'rice_cooker_hours': return hoursSchedule({ morning: 1 }, step);
   }
 }
 

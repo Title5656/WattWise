@@ -2,6 +2,7 @@ import {
   calculateHouseholdEstimate,
   calculateEnergy,
   calculateElectricityBill,
+  type ApplianceEnergySpec,
   type EnergyCalculationResult,
   type ElectricityBillResult,
 } from './energy.ts';
@@ -23,6 +24,7 @@ export type Appliance = {
   name: string;
   detail: string;
   watts: number;
+  energySpec?: ApplianceEnergySpec;
   usageProfileId: UsageProfileId;
   image: string;
 };
@@ -48,7 +50,7 @@ export const applianceCatalog: Appliance[] = [
   { id: 'fan-xiaomi-smart2', category: 'พัดลม', brand: 'Xiaomi', model: 'BPLDS02DM', name: 'Mi Smart Standing Fan 2', detail: 'มอเตอร์ DC · Wi-Fi · เสียงเบา', watts: 15, usageProfileId: 'fan', image: '/products/xiaomi-smart-fan-2.png' },
   { id: 'heater-stiebel-xg45', category: 'เครื่องทำน้ำอุ่น', brand: 'Stiebel Eltron', model: 'XG 45 EC', name: 'เครื่องทำน้ำอุ่น X-TRA', detail: '4.5 kW · ELCB · IP25', watts: 4500, usageProfileId: 'water_heater', image: '/products/stiebel-xg45ec.jpg' },
   { id: 'microwave-toshiba-sm20', category: 'เครื่องใช้ในครัว', brand: 'Toshiba', model: 'ER-SM20(W)TH', name: 'ไมโครเวฟระบบธรรมดา', detail: '20 ลิตร · 5 ระดับความร้อน', watts: 800, usageProfileId: 'microwave', image: '/products/toshiba-er-sm20.webp' },
-  { id: 'rice-sharp-com18', category: 'เครื่องใช้ในครัว', brand: 'Sharp', model: 'KS-COM18', name: 'หม้อหุงข้าวดิจิทัล', detail: '1.8 ลิตร · Fuzzy Control · ตั้งเวลาได้', watts: 830, usageProfileId: 'rice_cooker', image: '/products/sharp-ks-com18.png' },
+  { id: 'rice-sharp-com18', category: 'เครื่องใช้ในครัว', brand: 'Sharp', model: 'KS-COM18', name: 'หม้อหุงข้าวดิจิทัล', detail: '1.8 ลิตร · Fuzzy Control · ตั้งเวลาได้', watts: 830, usageProfileId: 'rice_cooker_hours', image: '/products/sharp-ks-com18.png' },
 ];
 
 export function createHomeItem(appliance: Appliance): HomeAppliance {
@@ -71,6 +73,7 @@ export function resolveEnergyInput(item: HomeAppliance) {
     quantity: item.quantity,
     hoursPerDay: profile.inputKind === 'hours' ? scheduleHours(usageSchedule) : item.hoursPerDay,
     cyclesPerMonth: item.cyclesPerMonth,
+    energySpec: item.energySpec,
   });
 }
 
@@ -142,7 +145,7 @@ export function calculateDailyLoadProfile(items: HomeAppliance[]): number[] {
 
     if (schedule.kind === 'hours') {
       const loadFactor = input.loadFactor ?? 1;
-      const ratedLoadKw = item.watts * Math.max(1, Math.round(item.quantity)) / 1000;
+      const ratedLoadKw = (input.ratedPowerW ?? item.watts) * Math.max(1, Math.round(item.quantity)) / 1000;
       for (const period of Object.keys(periodEnergy) as Array<keyof typeof periodEnergy>) {
         periodEnergy[period] = ratedLoadKw * loadFactor * schedule.hoursByPeriod[period];
       }

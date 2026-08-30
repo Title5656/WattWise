@@ -1,4 +1,4 @@
-import type { CalculationMethod, EnergyInput } from './energy.ts';
+import type { ApplianceEnergySpec, CalculationMethod, EnergyInput } from './energy.ts';
 
 export type UsageProfileId =
   | 'inverter_ac'
@@ -8,7 +8,7 @@ export type UsageProfileId =
   | 'fan'
   | 'water_heater'
   | 'microwave'
-  | 'rice_cooker';
+  | 'rice_cooker_hours';
 
 export type UsageInputKind = 'hours' | 'cycles' | 'fixed';
 
@@ -34,7 +34,7 @@ export const usageProfiles: Record<UsageProfileId, ApplianceUsageProfile> = {
   fan: { id: 'fan', method: 'watt_hours', inputKind: 'hours', defaultHoursPerDay: 8, step: 0.5, min: 0, max: 24, description: 'กำลังไฟตามชั่วโมงที่เปิด' },
   water_heater: { id: 'water_heater', method: 'watt_hours', inputKind: 'hours', defaultHoursPerDay: 0.25, step: 0.25, min: 0, max: 24, description: 'เวลาเปิดน้ำอุ่นจริงต่อวัน' },
   microwave: { id: 'microwave', method: 'watt_hours', inputKind: 'hours', defaultHoursPerDay: 0.25, step: 0.25, min: 0, max: 24, description: 'เวลาอุ่นอาหารจริงต่อวัน' },
-  rice_cooker: { id: 'rice_cooker', method: 'per_cycle', inputKind: 'cycles', defaultCyclesPerMonth: 30, energyPerCycleKwh: 0.6, step: 1, min: 0, max: 310, description: 'พลังงานต่อรอบหุง' },
+  rice_cooker_hours: { id: 'rice_cooker_hours', method: 'watt_hours', inputKind: 'hours', defaultHoursPerDay: 1, step: 0.5, min: 0, max: 24, description: 'เวลาใช้งานหม้อหุงข้าวต่อวัน' },
 };
 
 export function getUsageProfile(id: UsageProfileId) {
@@ -43,16 +43,47 @@ export function getUsageProfile(id: UsageProfileId) {
 
 export function resolveProfileEnergyInput(
   profile: ApplianceUsageProfile,
-  input: { ratedPowerW: number; quantity: number; hoursPerDay: number | null; cyclesPerMonth: number | null },
+  input: {
+    ratedPowerW: number;
+    quantity: number;
+    hoursPerDay: number | null;
+    cyclesPerMonth: number | null;
+    energySpec?: ApplianceEnergySpec;
+  },
 ): EnergyInput {
-  return {
-    method: profile.method,
-    ratedPowerW: input.ratedPowerW,
+  const baseInput = {
     quantity: input.quantity,
+    daysPerMonth: 30,
+  };
+
+  if (input.energySpec?.calculationMethod === 'annual_energy') {
+    return {
+      ...baseInput,
+      method: 'annual_energy',
+      annualEnergyKwh: input.energySpec.annualEnergyKwh,
+    };
+  }
+
+  if (input.energySpec?.calculationMethod === 'per_cycle') {
+    return {
+      ...baseInput,
+      method: 'per_cycle',
+      ratedPowerW: input.ratedPowerW,
+      energyPerCycleKwh: input.energySpec.energyPerCycleKwh,
+      cyclesPerMonth: input.cyclesPerMonth,
+    };
+  }
+
+  const ratedPowerSpec = input.energySpec?.calculationMethod === 'rated_power'
+    ? input.energySpec
+    : undefined;
+  return {
+    ...baseInput,
+    method: profile.method,
+    ratedPowerW: ratedPowerSpec?.ratedPowerW ?? input.ratedPowerW,
     hoursPerDay: profile.inputKind === 'fixed' ? profile.defaultHoursPerDay : input.hoursPerDay,
     cyclesPerMonth: profile.inputKind === 'cycles' ? input.cyclesPerMonth : null,
     energyPerCycleKwh: profile.energyPerCycleKwh,
-    loadFactor: profile.loadFactor,
-    daysPerMonth: 30,
+    loadFactor: ratedPowerSpec?.loadFactor ?? profile.loadFactor,
   };
 }

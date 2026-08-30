@@ -296,6 +296,81 @@ test('resolves realistic usage profiles for the catalog', () => {
   assert.equal(heater.hoursPerDay, 0.25);
 });
 
+test('resolves a model annual-energy spec ahead of its category profile defaults', () => {
+  const refrigerator = createHomeItem({
+    ...fan,
+    id: 'annual-model',
+    usageProfileId: 'refrigerator',
+    energySpec: { calculationMethod: 'annual_energy', annualEnergyKwh: 360 },
+  });
+  const calculation = calculateEnergy(resolveEnergyInput(refrigerator));
+
+  assert.equal(calculation.method, 'annual_energy');
+  assert.equal(calculation.monthlyEnergyKwh, 30);
+  assert.equal(calculation.dailyEnergyKwh, 1);
+});
+
+test('resolves a model per-cycle spec ahead of its category profile default', () => {
+  const washer = createHomeItem({
+    ...fan,
+    id: 'per-cycle-model',
+    usageProfileId: 'washing_machine',
+    energySpec: { calculationMethod: 'per_cycle', energyPerCycleKwh: 1.25 },
+  });
+  const calculation = calculateEnergy(resolveEnergyInput(washer));
+
+  assert.equal(calculation.method, 'per_cycle');
+  assert.equal(calculation.monthlyEnergyKwh, 15);
+});
+
+test('resolves a model rated-power spec through its load-factor profile', () => {
+  const ac = createHomeItem({
+    ...fan,
+    id: 'rated-model',
+    usageProfileId: 'inverter_ac',
+    energySpec: { calculationMethod: 'rated_power', ratedPowerW: 1_000 },
+  });
+  const input = resolveEnergyInput({ ...ac, usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 4 } } });
+
+  assert.equal(input.method, 'variable_load');
+  assert.equal(input.ratedPowerW, 1_000);
+  assert.equal(calculateEnergy(input).dailyEnergyKwh, 2.4);
+});
+
+test('uses a model rated-power spec when distributing hourly load', () => {
+  const ac = createHomeItem({
+    ...fan,
+    id: 'rated-load-model',
+    usageProfileId: 'inverter_ac',
+    energySpec: { calculationMethod: 'rated_power', ratedPowerW: 1_000 },
+  });
+  const profile = calculateDailyLoadProfile([{
+    ...ac,
+    usageSchedule: { kind: 'hours', hoursByPeriod: { night: 0, morning: 0, daytime: 0, evening: 4 } },
+  }]);
+
+  assert.ok(profile.slice(9, 12).every((kw) => Math.abs(kw - 0.4) < 1e-12));
+});
+
+test('uses the rice cooker hourly profile with a one-hour morning default', () => {
+  const riceCooker = createHomeItem(applianceCatalog.find((item) => item.id === 'rice-sharp-com18'));
+
+  assert.equal(riceCooker.usageProfileId, 'rice_cooker_hours');
+  assert.equal(riceCooker.hoursPerDay, 1);
+  assert.deepEqual(riceCooker.usageSchedule, {
+    kind: 'hours',
+    hoursByPeriod: { night: 0, morning: 1, daytime: 0, evening: 0 },
+  });
+});
+
+test('keeps annual-energy daily and monthly values consistent with a 30-day month', () => {
+  const calculation = calculateEnergy({ method: 'annual_energy', annualEnergyKwh: 360 });
+
+  assert.equal(calculation.monthlyEnergyKwh, 30);
+  assert.equal(calculation.dailyEnergyKwh, 1);
+  assert.equal(calculation.dailyEnergyKwh * 30, calculation.monthlyEnergyKwh);
+});
+
 test('creates the approved default schedules for appliance profiles', () => {
   assert.deepEqual(createDefaultUsageSchedule('inverter_ac'), {
     kind: 'hours',
@@ -414,6 +489,12 @@ test('selects residential tariffs by billing month and flags future fallback', (
   assert.equal(september.tiers[2].ratePerKwh, 4.3583);
   assert.equal(future.status, 'latest_known');
   assert.equal(future.warnings[0].code, 'tariff_ft_outdated');
+});
+
+test('selects tariffs using the Asia/Bangkok calendar date at a UTC boundary', () => {
+  const tariff = getResidentialTariff(new Date('2026-08-31T17:30:00.000Z'));
+
+  assert.equal(tariff.id, 'residential-2026-sep-dec');
 });
 
 test('calculates the official progressive bill boundaries with Ft and VAT', () => {

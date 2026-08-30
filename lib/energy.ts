@@ -1,4 +1,8 @@
 export type CalculationMethod = 'watt_hours' | 'per_cycle' | 'annual_energy' | 'variable_load';
+export type ApplianceEnergySpec =
+  | { calculationMethod: 'rated_power'; ratedPowerW: number; loadFactor?: number | null }
+  | { calculationMethod: 'annual_energy'; annualEnergyKwh: number }
+  | { calculationMethod: 'per_cycle'; energyPerCycleKwh: number };
 export type CalculationConfidence = 'high' | 'medium' | 'low' | 'sample';
 export type CalculationStatus = 'calculated' | 'estimated' | 'insufficient_data';
 
@@ -78,7 +82,7 @@ export function calculateEnergy(input: EnergyInput): EnergyCalculationResult {
     } else {
       const normalizedAnnualEnergy = clamp(annualEnergyKwh, 0);
       monthlyEnergyKwh = normalizedAnnualEnergy / 12 * quantity;
-      dailyEnergyKwh = normalizedAnnualEnergy / 365 * quantity;
+      dailyEnergyKwh = monthlyEnergyKwh / DEFAULT_DAYS_PER_MONTH;
     }
   } else if (input.method === 'per_cycle') {
     const energyPerCycleKwh = finiteNumber(input.energyPerCycleKwh);
