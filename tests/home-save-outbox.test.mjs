@@ -46,6 +46,18 @@ function quotaFailingStorage() {
   };
 }
 
+function v1ReplacingStorage(initialLegacyBody, replacementLegacyBody) {
+  const values = new Map([[outbox.LEGACY_HOME_SAVE_OUTBOX_KEY, initialLegacyBody]]);
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      values.set(key, value);
+      if (key === outbox.HOME_SAVE_OUTBOX_KEY) values.set(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY, replacementLegacyBody);
+    },
+    removeItem: (key) => values.delete(key),
+  };
+}
+
 function envelope(body, version = 2) {
   return JSON.stringify({ version, body });
 }
@@ -82,16 +94,70 @@ test('outbox rejects malformed or oversized pending payloads', () => {
   assert.equal(localStorage.getItem(outbox.HOME_SAVE_OUTBOX_KEY), null);
 });
 
-test('synchronizing a reverted edit discards the abandoned pending body', () => {
+test('initial confirmed state preserves another tab pending body when this tab owns none', () => {
   const localStorage = storage();
   const confirmed = JSON.stringify({ items: [item('confirmed')] });
-  const abandoned = JSON.stringify({ items: [item('abandoned')] });
+  const newer = JSON.stringify({ items: [item('newer')] });
 
-  assert.equal(outbox.syncPendingHomeSave(localStorage, confirmed, null), confirmed);
-  assert.equal(outbox.syncPendingHomeSave(localStorage, abandoned, confirmed), abandoned);
-  assert.equal(outbox.readPendingHomeSave(localStorage), abandoned);
-  assert.equal(outbox.syncPendingHomeSave(localStorage, confirmed, confirmed), null);
+  outbox.stagePendingHomeSave(localStorage, newer);
+
+  assert.equal(outbox.syncPendingHomeSave(localStorage, confirmed, confirmed, null), null);
+  assert.equal(outbox.readPendingHomeSave(localStorage), newer);
+});
+
+test('reverting this tab owned edit clears only its pending body', () => {
+  const localStorage = storage();
+  const confirmed = JSON.stringify({ items: [item('confirmed')] });
+  const owned = JSON.stringify({ items: [item('owned')] });
+
+  outbox.stagePendingHomeSave(localStorage, owned);
+
+  assert.equal(outbox.syncPendingHomeSave(localStorage, confirmed, confirmed, owned), null);
   assert.equal(outbox.readPendingHomeSave(localStorage), null);
+});
+
+test('reverting this tab owned edit preserves a newer body from another tab', () => {
+  const localStorage = storage();
+  const confirmed = JSON.stringify({ items: [item('confirmed')] });
+  const owned = JSON.stringify({ items: [item('owned')] });
+  const newer = JSON.stringify({ items: [item('newer')] });
+
+  outbox.stagePendingHomeSave(localStorage, owned);
+  outbox.stagePendingHomeSave(localStorage, newer);
+
+  assert.equal(outbox.syncPendingHomeSave(localStorage, confirmed, confirmed, owned), null);
+  assert.equal(outbox.readPendingHomeSave(localStorage), newer);
+});
+
+test('an older save completion preserves a newer tab body', () => {
+  const localStorage = storage();
+  const older = JSON.stringify({ items: [item('older')] });
+  const newer = JSON.stringify({ items: [item('newer')] });
+
+  outbox.stagePendingHomeSave(localStorage, older);
+  outbox.stagePendingHomeSave(localStorage, newer);
+  outbox.clearPendingHomeSave(localStorage, older);
+
+  assert.equal(outbox.readPendingHomeSave(localStorage), newer);
+});
+
+test('staging preserves a v1 value replaced while v2 is persisted', () => {
+  const previous = JSON.stringify({ items: [item('previous')] });
+  const newer = JSON.stringify({ items: [item('newer')] });
+  const localStorage = v1ReplacingStorage(previous, newer);
+
+  outbox.stagePendingHomeSave(localStorage, JSON.stringify({ items: [item('current')] }));
+
+  assert.equal(localStorage.getItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY), newer);
+});
+
+test('migration preserves a v1 value replaced while v2 is persisted', () => {
+  const previous = JSON.stringify({ items: [item('previous')] });
+  const newer = JSON.stringify({ items: [item('newer')] });
+  const localStorage = v1ReplacingStorage(previous, newer);
+
+  assert.equal(outbox.readPendingHomeSave(localStorage), previous);
+  assert.equal(localStorage.getItem(outbox.LEGACY_HOME_SAVE_OUTBOX_KEY), newer);
 });
 
 test('migrates a valid v1 rice-cooker body to the v2 retry envelope', () => {

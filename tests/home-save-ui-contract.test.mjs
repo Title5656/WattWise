@@ -8,6 +8,7 @@ test('My Home synchronizes pending storage before scheduling a save', async () =
   const source = await read();
 
   assert.match(source, /syncPendingHomeSave/);
+  assert.match(source, /ownedPendingBody/);
   assert.doesNotMatch(source, /stagePendingHomeSave\(storage, body\)/);
 });
 

@@ -52,6 +52,7 @@ export default function MyHomePage() {
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const saveSequence = useRef(0);
   const lastSavedBody = useRef<string | null>(null);
+  const ownedPendingBody = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,12 +97,14 @@ export default function MyHomePage() {
     const body = canonicalizePendingHomeSave(serializedBody) ?? serializedBody;
     const storage = getHomeSaveStorage();
     const pendingBody = storage
-      ? syncPendingHomeSave(storage, body, lastSavedBody.current)
+      ? syncPendingHomeSave(storage, body, lastSavedBody.current, ownedPendingBody.current)
       : body === lastSavedBody.current ? null : body;
     if (pendingBody === null) {
+      ownedPendingBody.current = null;
       setSaveState('saved');
       return;
     }
+    if (storage) ownedPendingBody.current = pendingBody;
     const scheduleSave = debounce((savedBody: string) => {
       setSaveState('saving');
       saveQueue.current = saveQueue.current.catch(() => undefined).then(() => withHomeSaveLock(async () => {
@@ -115,6 +118,7 @@ export default function MyHomePage() {
         if (!response.ok) throw new Error('save failed');
         lastSavedBody.current = savedBody;
         if (storage) clearPendingHomeSave(storage, savedBody);
+        if (ownedPendingBody.current === savedBody) ownedPendingBody.current = null;
         if (sequence === saveSequence.current) setSaveState('saved');
       })).catch(() => { if (sequence === saveSequence.current) setSaveState('error'); });
     }, 300);

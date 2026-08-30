@@ -120,8 +120,11 @@ function parseEnvelope(raw: string): Envelope | null {
 export function stagePendingHomeSave(storage: StorageLike, body: string) {
   try {
     const canonicalBody = canonicalizePendingHomeSave(body);
+    const legacyBody = storage.getItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
     storage.setItem(HOME_SAVE_OUTBOX_KEY, JSON.stringify({ version: 2, body: canonicalBody ?? body } satisfies Envelope));
-    if (canonicalBody) storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
+    if (canonicalBody && legacyBody !== null && storage.getItem(LEGACY_HOME_SAVE_OUTBOX_KEY) === legacyBody) {
+      storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
+    }
   } catch {
     // Storage can be unavailable in private browsing or when quota is exhausted.
   }
@@ -149,7 +152,7 @@ export function readPendingHomeSave(storage: StorageLike): string | null {
     } catch {
       return canonicalBody;
     }
-    storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
+    if (storage.getItem(LEGACY_HOME_SAVE_OUTBOX_KEY) === legacyBody) storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
     return canonicalBody;
   } catch {
     return null;
@@ -169,20 +172,16 @@ export function clearPendingHomeSave(storage: StorageLike, body: string) {
   }
 }
 
-export function discardPendingHomeSave(storage: StorageLike) {
-  try {
-    storage.removeItem(HOME_SAVE_OUTBOX_KEY);
-    storage.removeItem(LEGACY_HOME_SAVE_OUTBOX_KEY);
-  } catch {
-    // Confirmed saves remain safe if storage becomes unavailable.
-  }
-}
-
-export function syncPendingHomeSave(storage: StorageLike, currentBody: string, lastSavedBody: string | null): string | null {
+export function syncPendingHomeSave(
+  storage: StorageLike,
+  currentBody: string,
+  lastSavedBody: string | null,
+  ownedPendingBody: string | null,
+): string | null {
   const canonicalCurrent = canonicalizePendingHomeSave(currentBody);
   const canonicalSaved = lastSavedBody === null ? null : canonicalizePendingHomeSave(lastSavedBody);
   if (canonicalCurrent && canonicalCurrent === canonicalSaved) {
-    discardPendingHomeSave(storage);
+    if (ownedPendingBody) clearPendingHomeSave(storage, ownedPendingBody);
     return null;
   }
   const pendingBody = canonicalCurrent ?? currentBody;
