@@ -29,8 +29,8 @@ Copy-Item dist/server/wrangler.json dist/server/wrangler.local.json
 $config = Get-Content dist/server/wrangler.local.json -Raw | ConvertFrom-Json
 $config.d1_databases[0].migrations_dir = '../../drizzle'
 $config | ConvertTo-Json -Depth 20 | Set-Content dist/server/wrangler.local.json -Encoding utf8
-npx wrangler d1 migrations list DB --local --config dist/server/wrangler.local.json
-npx wrangler d1 migrations apply DB --local --config dist/server/wrangler.local.json
+npx wrangler d1 migrations list DB --local --persist-to .wrangler/state --config dist/server/wrangler.local.json
+npx wrangler d1 migrations apply DB --local --persist-to .wrangler/state --config dist/server/wrangler.local.json
 ```
 
 Production deployment is CI-owned. Its workflow first reconciles older D1 migration history, then lists and applies the same `drizzle` migrations against the built Worker configuration before deploying:
