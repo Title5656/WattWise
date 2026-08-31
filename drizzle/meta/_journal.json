@@ -57,6 +57,13 @@
       "when": 1788152400000,
       "tag": "0007_repair_legacy_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788177036722,
+      "tag": "0008_third_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

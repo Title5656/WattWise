@@ -1,4 +1,5 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const categories = sqliteTable('categories', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -49,13 +50,93 @@ export const applianceModels = sqliteTable('appliance_models', {
   index('idx_appliance_models_active_search').on(table.isActive, table.displayName, table.modelCode, table.catalogKey),
 ]);
 
-export const households = sqliteTable('households', {
+export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  province: text('province'),
+  publicId: text('public_id').notNull(),
+  email: text('email').notNull(),
+  displayName: text('display_name'),
+  avatarUrl: text('avatar_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-});
+}, (table) => [
+  uniqueIndex('idx_users_public_id').on(table.publicId),
+  index('idx_users_email').on(table.email),
+]);
+
+export const userIdentities = sqliteTable('user_identities', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+}, (table) => [
+  uniqueIndex('idx_user_identities_provider_subject').on(table.provider, table.subject),
+  index('idx_user_identities_user').on(table.userId),
+]);
+
+export const tariffProducts = sqliteTable('tariff_products', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  productKey: text('product_key').notNull(),
+  name: text('name').notNull(),
+  provider: text('provider').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => [
+  uniqueIndex('idx_tariff_products_product_key').on(table.productKey),
+  index('idx_tariff_products_provider').on(table.provider),
+]);
+
+export const households = sqliteTable('households', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  publicId: text('public_id'),
+  name: text('name').notNull(),
+  province: text('province'),
+  electricityProvider: text('electricity_provider'),
+  tariffProductId: integer('tariff_product_id').references(() => tariffProducts.id, { onDelete: 'set null' }),
+  homeRevision: integer('home_revision').notNull().default(0),
+  status: text('status', { enum: ['active', 'quarantined', 'deleted'] }).notNull().default('active'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => [
+  uniqueIndex('idx_households_public_id').on(table.publicId),
+  index('idx_households_tariff_product').on(table.tariffProductId),
+  check('households_status_check', sql`${table.status} IN ('active', 'quarantined', 'deleted')`),
+]);
+
+export const householdMembers = sqliteTable('household_members', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['owner', 'admin', 'member', 'viewer'] }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => [
+  uniqueIndex('idx_household_members_household_user').on(table.householdId, table.userId),
+  uniqueIndex('idx_household_members_one_owner').on(table.householdId).where(sql`${table.role} = 'owner'`),
+  index('idx_household_members_user').on(table.userId, table.householdId),
+  index('idx_household_members_household_role').on(table.householdId, table.role),
+  check('household_members_role_check', sql`${table.role} IN ('owner', 'admin', 'member', 'viewer')`),
+]);
+
+export const householdInvites = sqliteTable('household_invites', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  invitedByUserId: integer('invited_by_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  emailNormalized: text('email_normalized').notNull(),
+  role: text('role', { enum: ['admin', 'member', 'viewer'] }).notNull(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  acceptedAt: integer('accepted_at', { mode: 'timestamp' }),
+  revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+}, (table) => [
+  uniqueIndex('idx_household_invites_token_hash').on(table.tokenHash),
+  index('idx_household_invites_household_email').on(table.householdId, table.emailNormalized),
+  index('idx_household_invites_email').on(table.emailNormalized, table.expiresAt),
+  index('idx_household_invites_inviter').on(table.invitedByUserId),
+  check('household_invites_role_check', sql`${table.role} IN ('admin', 'member', 'viewer')`),
+  check('household_invites_email_normalized_check', sql`${table.emailNormalized} = lower(trim(${table.emailNormalized}))`),
+]);
 
 export const householdAppliances = sqliteTable('household_appliances', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -71,9 +152,16 @@ export const householdAppliances = sqliteTable('household_appliances', {
   loadFactor: real('load_factor'),
   startMinute: integer('start_minute'),
   endMinute: integer('end_minute'),
+  instanceKey: text('instance_key'),
+  usageSchedule: text('usage_schedule'),
+  position: integer('position').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-}, (table) => [index('idx_household_appliances_household').on(table.householdId)]);
+}, (table) => [
+  index('idx_household_appliances_household').on(table.householdId),
+  uniqueIndex('idx_household_appliances_household_instance').on(table.householdId, table.instanceKey),
+  index('idx_household_appliances_household_position').on(table.householdId, table.position),
+]);
 
 export const savedHomeAppliances = sqliteTable('saved_home_appliances', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -89,6 +177,7 @@ export const savedHomeAppliances = sqliteTable('saved_home_appliances', {
 
 export const tariffPlans = sqliteTable('tariff_plans', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  productId: integer('product_id').references(() => tariffProducts.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   provider: text('provider').notNull(),
   effectiveFrom: integer('effective_from', { mode: 'timestamp' }).notNull(),
@@ -97,7 +186,10 @@ export const tariffPlans = sqliteTable('tariff_plans', {
   ftRatePerKwh: real('ft_rate_per_kwh').notNull().default(0),
   vatRate: real('vat_rate').notNull().default(0.07),
   sourceUrl: text('source_url'),
-}, (table) => [index('idx_tariff_plans_effective').on(table.effectiveFrom)]);
+}, (table) => [
+  index('idx_tariff_plans_effective').on(table.effectiveFrom),
+  index('idx_tariff_plans_product_effective').on(table.productId, table.effectiveFrom),
+]);
 
 export const tariffTiers = sqliteTable('tariff_tiers', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -108,7 +200,7 @@ export const tariffTiers = sqliteTable('tariff_tiers', {
   ratePerKwh: real('rate_per_kwh').notNull(),
 }, (table) => [uniqueIndex('idx_tariff_tiers_plan_sequence').on(table.tariffPlanId, table.sequence)]);
 
-export const monthlyEnergyRecords = sqliteTable('monthly_energy_records', {
+export const legacyMonthlyEnergyRecords = sqliteTable('monthly_energy_records', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   householdKey: text('household_key').notNull(),
   billingMonth: text('billing_month').notNull(),
@@ -120,4 +212,18 @@ export const monthlyEnergyRecords = sqliteTable('monthly_energy_records', {
   actualAt: integer('actual_at'),
 }, (table) => [
   uniqueIndex('idx_monthly_energy_records_household_month').on(table.householdKey, table.billingMonth),
+]);
+
+export const monthlyEnergyRecords = sqliteTable('household_monthly_energy_records', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'cascade' }),
+  billingMonth: text('billing_month').notNull(),
+  estimatedKwh: real('estimated_kwh'),
+  estimatedBill: real('estimated_bill'),
+  actualKwh: real('actual_kwh'),
+  actualBill: real('actual_bill'),
+  estimatedAt: integer('estimated_at'),
+  actualAt: integer('actual_at'),
+}, (table) => [
+  uniqueIndex('idx_household_monthly_energy_records_household_month').on(table.householdId, table.billingMonth),
 ]);
