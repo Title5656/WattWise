@@ -6,6 +6,7 @@ const catalogApi = await import('../lib/catalog-api.ts').catch(() => ({}));
 
 function createDatabase() {
   const sqlite = new DatabaseSync(':memory:');
+  const queries = [];
   sqlite.exec(`
     CREATE TABLE categories (
       id INTEGER PRIMARY KEY,
@@ -57,12 +58,14 @@ function createDatabase() {
   for (const row of rows) insert.run(...row);
 
   return {
+    queries,
     execute(sql) {
       sqlite.exec(sql);
     },
     prepare(sql) {
       return {
         bind(...values) {
+          queries.push({ sql, values });
           return {
             async all() {
               return { results: sqlite.prepare(sql).all(...values) };
@@ -127,9 +130,38 @@ test('catalog searches case-insensitively across brand, model, display name, and
 });
 
 test('catalog treats percent, underscore, and backslash query characters literally', async () => {
-  const { body } = await response(`?q=${encodeURIComponent('%_\\')}`);
+  const db = createDatabase();
+  const query = '%_\\';
+  const { body } = await response(`?q=${encodeURIComponent(query)}`, db);
 
   assert.deepEqual(body.items.map((item) => item.id), ['fan-alpha-wild']);
+  const searchQueries = db.queries.filter(({ sql }) => sql.includes('COUNT(*) AS total') || sql.includes('ORDER BY m.sort_order'));
+  assert.equal(searchQueries.length, 2);
+  for (const prepared of searchQueries) {
+    assert.doesNotMatch(prepared.sql, /\bLIKE\b|\bESCAPE\b/i);
+    assert.deepEqual(prepared.values.slice(0, 4), [query, query, query, query]);
+  }
+});
+
+test('catalog accepts the full 100-character query contract for ASCII and multibyte Thai text', async () => {
+  const ascii = 'x'.repeat(100);
+  const thai = 'ก'.repeat(100);
+  const db = createDatabase();
+  db.execute(`UPDATE appliance_models SET display_name = '${ascii}' WHERE catalog_key = 'fan-alpha-a'`);
+  db.execute(`UPDATE appliance_models SET display_name = '${thai}' WHERE catalog_key = 'fan-bravo-a'`);
+
+  const asciiResult = await response(`?q=${ascii}`, db);
+  const thaiResult = await response(`?q=${encodeURIComponent(thai)}`, db);
+
+  assert.equal(asciiResult.status, 200);
+  assert.deepEqual(asciiResult.body.items.map((item) => item.id), ['fan-alpha-a']);
+  assert.equal(thaiResult.status, 200);
+  assert.deepEqual(thaiResult.body.items.map((item) => item.id), ['fan-bravo-a']);
+  const searchQueries = db.queries.filter(({ sql }) => sql.includes('COUNT(*) AS total') || sql.includes('ORDER BY m.sort_order'));
+  assert.equal(searchQueries.length, 4);
+  for (const prepared of searchQueries) assert.doesNotMatch(prepared.sql, /\bLIKE\b|\bESCAPE\b/i);
+  assert.equal(searchQueries.filter(({ values }) => values[0] === ascii).length, 2);
+  assert.equal(searchQueries.filter(({ values }) => values[0] === thai).length, 2);
 });
 
 test('catalog applies an exact category slug and leaves metadata available for an unknown category', async () => {

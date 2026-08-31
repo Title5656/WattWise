@@ -37,7 +37,7 @@ test('empty-home clearing removes a current estimate-only row', async () => {
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM monthly_energy_records').get().count, 0);
 });
 
-test('an empty home response clears the current month estimate before reading history', async () => {
+test('an empty home response is read-only and retains the current month estimate', async () => {
   const { db, sqlite } = createHomeDatabase();
   sqlite.exec(`INSERT INTO monthly_energy_records
     (household_key, billing_month, estimated_kwh, estimated_bill, estimated_at)
@@ -45,6 +45,15 @@ test('an empty home response clears the current month estimate before reading hi
 
   const response = await readHomeResponse(db, 'default-home', [], Date.parse('2026-08-15T00:00:00+07:00'));
 
-  assert.deepEqual(response.history, []);
-  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM monthly_energy_records').get().count, 0);
+  assert.equal(response.history.length, 1);
+  assert.deepEqual(response.history[0], {
+    billingMonth: '2026-08',
+    estimatedKwh: 100,
+    estimatedBill: 420,
+    actualKwh: null,
+    actualBill: null,
+    estimatedAt: 1,
+    actualAt: null,
+  });
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM monthly_energy_records').get().count, 1);
 });

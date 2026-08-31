@@ -54,10 +54,6 @@ export type CatalogRow = {
 type CountRow = { total: number };
 type CategoryRow = { slug: string; name: string; count: number };
 
-function escapedLike(value: string) {
-  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
-}
-
 function energySpec(row: CatalogRow): ApplianceEnergySpec {
   const required = (value: number | null, column: string) => {
     if (value === null) throw new Error(`Catalog row ${row.catalogKey} is missing ${column}`);
@@ -139,13 +135,12 @@ function filters(query: CatalogQuery) {
   }
   if (query.q) {
     clauses.push(`(
-      b.name LIKE ? ESCAPE '\\' COLLATE NOCASE
-      OR m.model_code LIKE ? ESCAPE '\\' COLLATE NOCASE
-      OR m.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE
-      OR (COALESCE(CAST(m.capacity_value AS TEXT), '') || ' ' || COALESCE(m.capacity_unit, '') || ' ' || COALESCE(m.efficiency_label, '')) LIKE ? ESCAPE '\\' COLLATE NOCASE
+      instr(lower(coalesce(b.name, '')), lower(?)) > 0
+      OR instr(lower(coalesce(m.model_code, '')), lower(?)) > 0
+      OR instr(lower(coalesce(m.display_name, '')), lower(?)) > 0
+      OR instr(lower(COALESCE(CAST(m.capacity_value AS TEXT), '') || ' ' || COALESCE(m.capacity_unit, '') || ' ' || COALESCE(m.efficiency_label, '')), lower(?)) > 0
     )`);
-    const value = `%${escapedLike(query.q)}%`;
-    bindings.push(value, value, value, value);
+    bindings.push(query.q, query.q, query.q, query.q);
   }
   return { where: clauses.join(' AND '), bindings };
 }

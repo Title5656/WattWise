@@ -280,8 +280,8 @@ test('seed migration is journaled and creates the accepted active catalog snapsh
     WHERE is_active = 1
   `).get();
 
-  assert.equal(journal.entries.at(-1).tag, migrationTag);
-  assert.equal(journal.entries.at(-1).idx, 6);
+  const seedEntry = journal.entries.find((entry) => entry.tag === migrationTag);
+  assert.equal(seedEntry?.idx, 6);
   assert.ok(counts.total >= 300 && counts.total <= 500, `active count ${counts.total}`);
   assert.ok(counts.total >= 350 && counts.total <= 380, `preferred active count ${counts.total}`);
   assert.equal(counts.uniqueKeys, counts.total);

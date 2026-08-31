@@ -26,6 +26,20 @@ export async function readMonthlyEnergyRecords(db: D1Database, householdKey: str
   }));
 }
 
+export function prepareMonthlyEstimateUpsert(
+  db: D1Database,
+  householdKey: string,
+  billingMonth: string,
+  summary: Pick<HomeSummary, 'monthlyKwh' | 'monthlyBill'>,
+  updatedAt: number,
+) {
+  return db.prepare(
+    `INSERT INTO monthly_energy_records (household_key, billing_month, estimated_kwh, estimated_bill, estimated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(household_key, billing_month) DO UPDATE SET estimated_kwh = excluded.estimated_kwh, estimated_bill = excluded.estimated_bill, estimated_at = excluded.estimated_at`,
+  ).bind(householdKey, billingMonth, summary.monthlyKwh, summary.monthlyBill, updatedAt);
+}
+
 export async function upsertMonthlyEstimate(
   db: D1Database,
   householdKey: string,
@@ -33,25 +47,25 @@ export async function upsertMonthlyEstimate(
   summary: Pick<HomeSummary, 'monthlyKwh' | 'monthlyBill'>,
   updatedAt: number,
 ) {
-  await db.prepare(
-    `INSERT INTO monthly_energy_records (household_key, billing_month, estimated_kwh, estimated_bill, estimated_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(household_key, billing_month) DO UPDATE SET estimated_kwh = excluded.estimated_kwh, estimated_bill = excluded.estimated_bill, estimated_at = excluded.estimated_at`,
-  ).bind(householdKey, billingMonth, summary.monthlyKwh, summary.monthlyBill, updatedAt).run();
+  await prepareMonthlyEstimateUpsert(db, householdKey, billingMonth, summary, updatedAt).run();
 }
 
-export async function clearMonthlyEstimate(db: D1Database, householdKey: string, billingMonth: string) {
-  await db.batch([
+export function prepareMonthlyEstimateClear(db: D1Database, householdKey: string, billingMonth: string) {
+  return [
     db.prepare(
       `DELETE FROM monthly_energy_records
-       WHERE household_key = ? AND billing_month = ? AND actual_bill IS NULL`,
+       WHERE household_key = ? AND billing_month = ? AND actual_kwh IS NULL AND actual_bill IS NULL`,
     ).bind(householdKey, billingMonth),
     db.prepare(
       `UPDATE monthly_energy_records
        SET estimated_kwh = NULL, estimated_bill = NULL, estimated_at = NULL
        WHERE household_key = ? AND billing_month = ?`,
     ).bind(householdKey, billingMonth),
-  ]);
+  ];
+}
+
+export async function clearMonthlyEstimate(db: D1Database, householdKey: string, billingMonth: string) {
+  await db.batch(prepareMonthlyEstimateClear(db, householdKey, billingMonth));
 }
 
 export async function upsertMonthlyActual(

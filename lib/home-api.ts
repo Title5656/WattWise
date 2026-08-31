@@ -1,11 +1,14 @@
 import { readCatalogModelsByKeys } from './catalog-repository.ts';
-import { type Appliance, type HomeAppliance } from './home-config.ts';
+import { calculateHomeSummary, type Appliance, type HomeAppliance } from './home-config.ts';
 import { readHomeResponse } from './home-response.ts';
 import { householdKey, readSavedHomeItems } from './home-storage.ts';
+import { getBillingMonth } from './monthly-history.ts';
+import { prepareMonthlyEstimateClear, prepareMonthlyEstimateUpsert } from './monthly-history-db.ts';
 import { getUsageProfile } from './usage-profiles.ts';
 import { normalizeUsageSchedule, scheduleHours } from './usage-schedule.ts';
 
 const INVALID_HOME_ERROR = 'ข้อมูลอุปกรณ์ไม่ถูกต้อง';
+const SAVED_INSERT_ROWS = 12;
 
 class InvalidHomePayloadError extends Error {}
 
@@ -30,7 +33,7 @@ function normalizedCycles(raw: unknown, appliance: Appliance) {
   return Math.round(bounded / profile.step) * profile.step;
 }
 
-async function validateItems(db: D1Database, rawItems: unknown[]): Promise<SavedItem[]> {
+async function validateItems(db: D1Database, rawItems: unknown[]) {
   const candidates = rawItems.map((raw) => {
     if (!raw || typeof raw !== 'object') invalid();
     const item = raw as Record<string, unknown>;
@@ -38,26 +41,62 @@ async function validateItems(db: D1Database, rawItems: unknown[]): Promise<Saved
     if (typeof item.instanceId !== 'string' || item.instanceId.length === 0) invalid();
     if (typeof item.quantity !== 'number' || !Number.isFinite(item.quantity)
       || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99) invalid();
-    return item as Record<string, unknown> & { id: string; quantity: number };
+    return item as Record<string, unknown> & { id: string; instanceId: string; quantity: number };
   });
 
   const models = await readCatalogModelsByKeys(db, candidates.map((item) => item.id));
   const modelsById = new Map(models.map((model) => [model.id, model]));
-  return candidates.map((item) => {
+  const savedItems: SavedItem[] = [];
+  const homeItems: HomeAppliance[] = [];
+  for (const item of candidates) {
     const appliance = modelsById.get(item.id);
     if (!appliance) invalid();
+    const profile = getUsageProfile(appliance.usageProfileId);
     const legacyHours = typeof item.hoursPerDay === 'number' && Number.isFinite(item.hoursPerDay)
       ? item.hoursPerDay
       : undefined;
     const usageSchedule = normalizeUsageSchedule(item.usageSchedule, appliance.usageProfileId, legacyHours);
-    return {
+    const hoursPerDay = scheduleHours(usageSchedule);
+    const cyclesPerMonth = normalizedCycles(item.cyclesPerMonth, appliance);
+    savedItems.push({
       applianceKey: appliance.id,
       quantity: item.quantity,
-      hoursPerDay: scheduleHours(usageSchedule),
-      cyclesPerMonth: normalizedCycles(item.cyclesPerMonth, appliance),
+      hoursPerDay,
+      cyclesPerMonth,
       usageSchedule: JSON.stringify(usageSchedule),
-    };
-  });
+    });
+    homeItems.push({
+      ...appliance,
+      instanceId: item.instanceId,
+      quantity: item.quantity,
+      hoursPerDay: profile.inputKind === 'hours' ? hoursPerDay : null,
+      cyclesPerMonth,
+      usageSchedule,
+    });
+  }
+  return { savedItems, homeItems };
+}
+
+function prepareSavedItemInserts(db: D1Database, items: SavedItem[], now: number) {
+  const statements = [];
+  for (let offset = 0; offset < items.length; offset += SAVED_INSERT_ROWS) {
+    const chunk = items.slice(offset, offset + SAVED_INSERT_ROWS);
+    const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const bindings = chunk.flatMap((item, index) => [
+      householdKey,
+      item.applianceKey,
+      item.quantity,
+      item.hoursPerDay,
+      item.cyclesPerMonth,
+      item.usageSchedule,
+      offset + index,
+      now,
+    ]);
+    statements.push(db.prepare(
+      `INSERT INTO saved_home_appliances (household_key, appliance_key, quantity, hours_per_day, cycles_per_month, usage_schedule, position, updated_at) VALUES ${placeholders}`,
+    ).bind(...bindings));
+  }
+  return statements;
 }
 
 export function createHomeHandlers(getDb: () => D1Database) {
@@ -95,16 +134,19 @@ export function createHomeHandlers(getDb: () => D1Database) {
 
     try {
       const db = getDb();
-      const items = await validateItems(db, body.items);
+      const { savedItems, homeItems } = await validateItems(db, body.items);
       const now = Date.now();
+      const billingMonth = getBillingMonth(new Date(now));
+      const summary = calculateHomeSummary(homeItems, new Date(now));
+      const historyMutations = homeItems.length > 0
+        ? [prepareMonthlyEstimateUpsert(db, householdKey, billingMonth, summary, now)]
+        : prepareMonthlyEstimateClear(db, householdKey, billingMonth);
       await db.batch([
         db.prepare('DELETE FROM saved_home_appliances WHERE household_key = ?').bind(householdKey),
-        ...items.map((item, position) => db.prepare(
-          'INSERT INTO saved_home_appliances (household_key, appliance_key, quantity, hours_per_day, cycles_per_month, usage_schedule, position, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        ).bind(householdKey, item.applianceKey, item.quantity, item.hoursPerDay, item.cyclesPerMonth, item.usageSchedule, position, now)),
+        ...prepareSavedItemInserts(db, savedItems, now),
+        ...historyMutations,
       ]);
-      const savedItems = await readSavedHomeItems(db);
-      return Response.json({ ...(await readResponse(db, savedItems, now)), savedAt: now });
+      return Response.json({ ...(await readResponse(db, homeItems, now)), savedAt: now });
     } catch (error) {
       if (error instanceof InvalidHomePayloadError) {
         return Response.json({ error: INVALID_HOME_ERROR }, { status: 400 });

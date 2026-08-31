@@ -31,6 +31,35 @@ function validItem(id = 'active-fan', overrides = {}) {
   };
 }
 
+function gateFirstSavedHomeRead(db) {
+  let releaseRead;
+  let reachedRead;
+  let didGate = false;
+  const released = new Promise((resolve) => { releaseRead = resolve; });
+  const reached = new Promise((resolve) => { reachedRead = resolve; });
+  const wrap = (statement) => ({
+    ...statement,
+    bind(...values) {
+      return wrap(statement.bind(...values));
+    },
+    async all() {
+      if (!didGate && statement.sql.includes('FROM saved_home_appliances s')) {
+        didGate = true;
+        const result = await statement.all();
+        reachedRead();
+        await released;
+        return result;
+      }
+      return statement.all();
+    },
+  });
+  return {
+    db: { ...db, prepare: (sql) => wrap(db.prepare(sql)) },
+    reached,
+    release: () => releaseRead(),
+  };
+}
+
 test('rejects an unknown catalog key without mutating the saved home', async () => {
   const { db, sqlite, batchCalls } = createHomeDatabase();
   insertSaved(sqlite, { applianceKey: 'active-fan', quantity: 4 });
@@ -108,4 +137,100 @@ test('keeps duplicate model keys as separate validated instances', async () => {
     { appliance_key: 'active-fan', quantity: 1 },
     { appliance_key: 'active-fan', quantity: 2 },
   ]);
+});
+
+test('a stale GET cannot overwrite monthly history before or after a newer PUT', async () => {
+  const { db, sqlite } = createHomeDatabase();
+  insertSaved(sqlite, { applianceKey: 'active-fan', quantity: 1, hoursPerDay: 4 });
+  const controlled = gateFirstSavedHomeRead(db);
+  const handlers = handler(controlled.db);
+
+  const staleGet = handlers.GET();
+  await controlled.reached;
+  const putResponse = await handlers.PUT(request([validItem('active-fan', { quantity: 2 })]));
+  assert.equal(putResponse.status, 200);
+  const putBody = await putResponse.json();
+  controlled.release();
+  assert.equal((await staleGet).status, 200);
+
+  const stored = sqlite.prepare(`SELECT estimated_kwh AS estimatedKwh, estimated_bill AS estimatedBill
+    FROM monthly_energy_records WHERE household_key = 'default-home'`).get();
+  assert.deepEqual({ ...stored }, {
+    estimatedKwh: putBody.summary.monthlyKwh,
+    estimatedBill: putBody.summary.monthlyBill,
+  });
+});
+
+test('nonempty replacement and its current-month estimate share one ordered atomic batch', async () => {
+  const { db, batchCalls } = createHomeDatabase();
+  const response = await handler(db).PUT(request([
+    validItem('active-fan', { instanceId: 'fan-one' }),
+    validItem('active-fan', { instanceId: 'fan-two', quantity: 2 }),
+  ]));
+
+  assert.equal(response.status, 200);
+  assert.equal(batchCalls.length, 1);
+  assert.equal(batchCalls[0].length, 3);
+  assert.match(batchCalls[0][0].sql, /^DELETE FROM saved_home_appliances/);
+  assert.match(batchCalls[0][1].sql, /^INSERT INTO saved_home_appliances/);
+  assert.equal(batchCalls[0][1].values.length, 16);
+  assert.match(batchCalls[0][2].sql, /^INSERT INTO monthly_energy_records/);
+});
+
+test('empty replacement and both estimate-clearing statements share one ordered atomic batch', async () => {
+  const { db, sqlite, batchCalls } = createHomeDatabase();
+  insertSaved(sqlite, { applianceKey: 'active-fan', quantity: 1 });
+  sqlite.exec(`INSERT INTO monthly_energy_records
+    (household_key, billing_month, estimated_kwh, estimated_bill, actual_kwh, actual_bill, estimated_at, actual_at)
+    VALUES ('default-home', '2026-08', 100, 420, 110, 500, 1, 2)`);
+
+  const originalNow = Date.now;
+  Date.now = () => Date.parse('2026-08-15T00:00:00+07:00');
+  try {
+    const response = await handler(db).PUT(request([]));
+    assert.equal(response.status, 200);
+  } finally {
+    Date.now = originalNow;
+  }
+
+  assert.equal(batchCalls.length, 1);
+  assert.equal(batchCalls[0].length, 3);
+  assert.match(batchCalls[0][0].sql, /^DELETE FROM saved_home_appliances/);
+  assert.match(batchCalls[0][1].sql, /^DELETE FROM monthly_energy_records/);
+  assert.match(batchCalls[0][2].sql, /^UPDATE monthly_energy_records/);
+  assert.deepEqual({ ...sqlite.prepare(`SELECT estimated_kwh, estimated_bill, estimated_at, actual_kwh, actual_bill, actual_at
+    FROM monthly_energy_records`).get() }, {
+    estimated_kwh: null, estimated_bill: null, estimated_at: null,
+    actual_kwh: 110, actual_bill: 500, actual_at: 2,
+  });
+});
+
+test('100-item saves stay below D1 free query and parameter limits while preserving order and duplicates', async () => {
+  const { db, sqlite, batchCalls } = createHomeDatabase();
+  const modelKeys = ['active-fan', 'active-annual', 'active-fan', 'inactive-cycle'];
+  const items = Array.from({ length: 100 }, (_, index) => validItem(modelKeys[index % modelKeys.length], {
+    instanceId: `instance-${index}`,
+    quantity: index % 7 + 1,
+    cyclesPerMonth: modelKeys[index % modelKeys.length] === 'inactive-cycle' ? 10 + index % 5 : null,
+  }));
+
+  const response = await handler(db).PUT(request(items));
+
+  assert.equal(response.status, 200);
+  assert.equal(batchCalls.length, 1);
+  const statements = batchCalls[0];
+  assert.equal(statements.length, 11);
+  assert.ok(statements.length < 50);
+  assert.match(statements[0].sql, /^DELETE FROM saved_home_appliances/);
+  assert.match(statements.at(-1).sql, /^INSERT INTO monthly_energy_records/);
+  const inserts = statements.slice(1, -1);
+  assert.equal(inserts.length, 9);
+  assert.ok(inserts.every(({ values }) => values.length <= 96));
+  assert.ok(statements.every(({ values }) => values.length <= 96));
+  assert.deepEqual(sqlite.prepare(`SELECT appliance_key AS applianceKey, quantity, position
+    FROM saved_home_appliances ORDER BY position, id`).all().map((row) => ({ ...row })), items.map((item, position) => ({
+    applianceKey: item.id,
+    quantity: item.quantity,
+    position,
+  })));
 });

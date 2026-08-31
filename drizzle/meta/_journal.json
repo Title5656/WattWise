@@ -50,6 +50,13 @@
       "when": 1788066946450,
       "tag": "0006_egat_catalog_seed",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788152400000,
+      "tag": "0007_repair_legacy_profiles",
+      "breakpoints": true
     }
   ]
 }
