@@ -4,7 +4,7 @@ Home Energy Builder & Simulator สำหรับประกอบบ้าน
 
 ## Current prototype
 
-- Catalog ตัวอย่าง 13 รุ่น
+- Catalog ที่ใช้งานอยู่ 374 รุ่น: EGAT Label No.5 ที่คัดสรร 361 รุ่น และรุ่น legacy 13 รุ่นเพื่อความเข้ากันได้ของข้อมูลบ้านที่บันทึกไว้
 - Search และ filter ตามหมวดหมู่
 - Drag-and-drop หรือกดเพิ่มอุปกรณ์เข้าบ้าน
 - ปรับจำนวนและชั่วโมงใช้งาน
