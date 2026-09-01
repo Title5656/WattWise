@@ -65,6 +65,36 @@ function setup() {
   return { api, db, sqlite };
 }
 
+function transferOwnershipBeforeMemberDelete(db, sqlite) {
+  let intercepted = false;
+  return {
+    ...db,
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      return {
+        bind(...values) {
+          const bound = statement.bind(...values);
+          return {
+            all: () => bound.all(),
+            async run() {
+              if (!intercepted && sql.includes('DELETE FROM household_members')) {
+                intercepted = true;
+                sqlite.exec(`
+                  BEGIN;
+                  UPDATE household_members SET role = 'admin' WHERE household_id = 10 AND user_id = 1;
+                  UPDATE household_members SET role = 'owner' WHERE household_id = 10 AND user_id = 4;
+                  COMMIT;
+                `);
+              }
+              return bound.run();
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 const users = {
   a: identity('sub-a', 'a@example.com', 'User A'),
   b: identity('sub-b', 'b@example.com', 'User B'),
@@ -230,6 +260,32 @@ test('member removal protects owners and self-service leave excludes owners', as
   assert.equal((await api.leaveHousehold(request('/api/households/hh_a/leave', {
     method: 'POST', user: users.member,
   }), { householdId: 'hh_a' })).status, 204);
+});
+
+test('admin removal cannot delete a member promoted to owner after authorization', async () => {
+  const { db, sqlite } = setup();
+  const api = createHouseholdApi(() => transferOwnershipBeforeMemberDelete(db, sqlite), { now: () => NOW });
+
+  const response = await api.removeMember(request('/api/households/hh_a/members/usr_member', {
+    method: 'DELETE', user: users.admin,
+  }), { householdId: 'hh_a', userId: 'usr_member' });
+
+  assert.equal(response.status, 409);
+  assert.equal(sqlite.prepare('SELECT role FROM household_members WHERE household_id = 10 AND user_id = 4').get().role, 'owner');
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND role = 'owner'").get().count, 1);
+});
+
+test('self leave cannot delete a member promoted to owner after authorization', async () => {
+  const { db, sqlite } = setup();
+  const api = createHouseholdApi(() => transferOwnershipBeforeMemberDelete(db, sqlite), { now: () => NOW });
+
+  const response = await api.leaveHousehold(request('/api/households/hh_a/leave', {
+    method: 'POST', user: users.member,
+  }), { householdId: 'hh_a' });
+
+  assert.equal(response.status, 409);
+  assert.equal(sqlite.prepare('SELECT role FROM household_members WHERE household_id = 10 AND user_id = 4').get().role, 'owner');
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND role = 'owner'").get().count, 1);
 });
 
 test('ownership transfer atomically demotes the owner, promotes an existing member, and retains one owner', async () => {

@@ -56,10 +56,17 @@ export async function updateMemberRole(
   return Number(result.meta.changes) === 1;
 }
 
-export async function removeMember(db: D1Database, householdId: number, userId: number): Promise<void> {
-  await db.prepare('DELETE FROM household_members WHERE household_id = ? AND user_id = ?')
-    .bind(householdId, userId)
+export async function removeMember(
+  db: D1Database,
+  householdId: number,
+  userId: number,
+  expectedRole: HouseholdRole,
+): Promise<boolean> {
+  const result = await db.prepare(`DELETE FROM household_members
+    WHERE household_id = ? AND user_id = ? AND role = ? AND role <> 'owner'`)
+    .bind(householdId, userId, expectedRole)
     .run();
+  return Number(result.meta.changes) === 1;
 }
 
 export async function transferHouseholdOwnership(

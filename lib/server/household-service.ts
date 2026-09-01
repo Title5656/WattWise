@@ -148,13 +148,19 @@ export function createHouseholdService(options: HouseholdServiceOptions = {}) {
       const target = await findHouseholdMember(db, access.householdId, targetPublicId);
       if (!target) throw new MemberNotFoundError();
       if (!canRemoveRole(access.role, target.role)) throw new HouseholdForbiddenError(householdPublicId);
-      await removeMember(db, access.householdId, target.internalUserId);
+      const removed = await removeMember(db, access.householdId, target.internalUserId, target.role);
+      if (!removed) {
+        throw new StateConflictError('MEMBER_REMOVAL_CONFLICT', 'Member role changed before removal.');
+      }
     },
 
     async leaveHousehold(db: D1Database, user: AuthenticatedUser, householdPublicId: string) {
       const access = await requireHouseholdMember(db, user.userId, householdPublicId);
       if (access.role === 'owner') throw new HouseholdForbiddenError(householdPublicId);
-      await removeMember(db, access.householdId, user.userId);
+      const removed = await removeMember(db, access.householdId, user.userId, access.role);
+      if (!removed) {
+        throw new StateConflictError('MEMBER_REMOVAL_CONFLICT', 'Member role changed before removal.');
+      }
     },
 
     async transferOwnership(
