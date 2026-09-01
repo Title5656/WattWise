@@ -13,6 +13,10 @@ import type { CatalogResponse } from '@/lib/catalog-repository';
 import { debounce } from '@/lib/debounce';
 import { addOrIncrementHomeItem, calculateHomeSummary, createHomeItem, getHomeUsageSchedule, type Appliance, type HomeAppliance } from '@/lib/home-config';
 import {
+  createScopedResourceSlot,
+  householdContentScopeKey,
+} from '@/lib/household-client-lifecycle';
+import {
   canEditHousehold,
   homeAutosaveStorageForRole,
   householdDashboardPath,
@@ -55,15 +59,20 @@ function formatNumber(value: number, digits = 0) {
 export function HouseholdMyHome({ householdId }: { householdId: string }) {
   const context = useHouseholdContext(householdId);
   if (context.phase !== 'ready') {
-    return <HouseholdAccessState phase={context.phase} error={context.error} />;
+    return <HouseholdAccessState
+      phase={context.phase}
+      error={context.error}
+      onRefresh={() => void context.refresh()}
+    />;
   }
   if (!context.user || !context.household) return <HouseholdAccessState phase="error" />;
   return <HouseholdMyHomeContent
-    key={householdId}
+    key={householdContentScopeKey(context.user, context.household)}
     householdId={householdId}
     user={context.user}
     household={context.household}
     households={context.households}
+    onRefreshMemberships={context.refresh}
   />;
 }
 
@@ -72,11 +81,13 @@ function HouseholdMyHomeContent({
   user,
   household,
   households,
+  onRefreshMemberships,
 }: {
   householdId: string;
   user: CurrentUser;
   household: HouseholdMembership;
   households: HouseholdMembership[];
+  onRefreshMemberships: () => Promise<void>;
 }) {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -85,8 +96,15 @@ function HouseholdMyHomeContent({
   const [autosaveState, setAutosaveState] = useState(initialAutosaveState);
   const [storageError, setStorageError] = useState('');
   const autosaveController = useRef<ScopedHomeAutosaveController | null>(null);
+  const [autosaveResources] = useState(() => createScopedResourceSlot<{
+    controller: ScopedHomeAutosaveController;
+    dispose(): void;
+  }>());
   const catalogRequests = useRef(createLatestRequestTracker());
   const readOnly = !canEditHousehold(household.role);
+  const autosaveScopeKey = householdContentScopeKey(user, household);
+  const autosaveRole = household.role;
+  const autosaveUserId = user.id;
   const homeItems = autosaveState.items;
   const canMutate = !readOnly && ['ready', 'saving', 'saved'].includes(autosaveState.phase);
 
@@ -145,23 +163,32 @@ function HouseholdMyHomeContent({
     const browserLocks = (navigator as Navigator & {
       locks?: { request<T>(name: string, callback: () => Promise<T>): Promise<T> };
     }).locks;
-    const controller = createScopedHomeAutosaveController({
-      storage: homeAutosaveStorageForRole(storage, household.role),
-      fetch,
-      locks: browserLocks,
-      debounceMs: 300,
+    const resource = autosaveResources.replace(autosaveScopeKey, () => {
+      const controller = createScopedHomeAutosaveController({
+        storage: homeAutosaveStorageForRole(storage, autosaveRole),
+        fetch,
+        locks: browserLocks,
+        debounceMs: 300,
+      });
+      const unsubscribe = controller.subscribe(setAutosaveState);
+      return {
+        controller,
+        dispose() {
+          unsubscribe();
+          controller.dispose();
+        },
+      };
     });
+    const { controller } = resource;
     autosaveController.current = controller;
-    const unsubscribe = controller.subscribe(setAutosaveState);
-    void controller.activate({ userId: user.id, householdId });
+    void controller.activate({ userId: autosaveUserId, householdId });
 
     return () => {
       cancelled = true;
-      unsubscribe();
-      controller.dispose();
+      autosaveResources.clear(autosaveScopeKey);
       if (autosaveController.current === controller) autosaveController.current = null;
     };
-  }, [household.role, householdId, user.id]);
+  }, [autosaveResources, autosaveRole, autosaveScopeKey, autosaveUserId, householdId]);
 
   const summary = calculateHomeSummary(homeItems);
   const itemEnergyById = new Map(summary.itemCalculations.map((item) => [
@@ -220,8 +247,12 @@ function HouseholdMyHomeContent({
     if (controller) void controller.discardDraftAndReload();
   }
 
-  if (autosaveState.phase === 'session-expired') return <HouseholdAccessState phase="session-expired" />;
-  if (autosaveState.phase === 'access-denied') return <HouseholdAccessState phase="access-denied" />;
+  if (autosaveState.phase === 'session-expired') {
+    return <HouseholdAccessState phase="session-expired" onRefresh={() => void onRefreshMemberships()} />;
+  }
+  if (autosaveState.phase === 'access-denied') {
+    return <HouseholdAccessState phase="access-denied" onRefresh={() => void onRefreshMemberships()} />;
+  }
 
   const saveLabel = autosaveState.phase === 'idle' || autosaveState.phase === 'loading'
     ? 'กำลังโหลด...'

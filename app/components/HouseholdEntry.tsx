@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
+  createHouseholdCreationLifecycle,
+  type HouseholdCreationState,
+} from '@/lib/household-client-lifecycle';
+import {
   decideHouseholdEntry,
   displayUserName,
   householdDestinationPath,
@@ -20,7 +24,7 @@ import { useHouseholdMemberships } from './use-household-memberships';
 
 export function HouseholdEntry({ destination }: { destination: HouseholdDestination }) {
   const router = useRouter();
-  const { phase, user, households, error } = useHouseholdMemberships();
+  const { phase, user, households, error, refresh } = useHouseholdMemberships();
   const decision = useMemo(
     () => phase === 'ready' ? decideHouseholdEntry(households, destination) : null,
     [destination, households, phase],
@@ -28,39 +32,39 @@ export function HouseholdEntry({ destination }: { destination: HouseholdDestinat
   const [name, setName] = useState('');
   const [province, setProvince] = useState('');
   const [electricityProvider, setElectricityProvider] = useState('');
-  const [createError, setCreateError] = useState('');
-  const [creating, setCreating] = useState(false);
+  const [creation] = useState(() => createHouseholdCreationLifecycle(fetch));
+  const [creationState, setCreationState] = useState<HouseholdCreationState>(
+    () => creation.getState(),
+  );
 
   useEffect(() => {
     if (decision?.kind === 'redirect') router.replace(decision.href);
   }, [decision, router]);
 
+  useEffect(() => {
+    const unsubscribe = creation.subscribe(setCreationState);
+    creation.mount();
+    return () => {
+      unsubscribe();
+      creation.dispose();
+    };
+  }, [creation]);
+
   async function createHousehold(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCreating(true);
-    setCreateError('');
-    try {
-      const response = await fetch('/api/households', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          province: province.trim() || undefined,
-          electricityProvider: electricityProvider.trim() || undefined,
-        }),
-      });
-      if (response.status === 401) throw new Error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง');
-      const body = await response.json() as { household?: HouseholdMembership; error?: string };
-      if (!response.ok || !body.household) throw new Error(body.error ?? 'สร้างบ้านไม่สำเร็จ');
-      router.replace(householdDestinationPath(body.household.id, destination));
-    } catch (caught) {
-      setCreateError(caught instanceof Error ? caught.message : 'สร้างบ้านไม่สำเร็จ');
-    } finally {
-      setCreating(false);
-    }
+    await creation.submit({
+      name,
+      province: province.trim() || undefined,
+      electricityProvider: electricityProvider.trim() || undefined,
+    }, (household: HouseholdMembership) => {
+      router.replace(householdDestinationPath(household.id, destination));
+    });
   }
 
-  if (phase !== 'ready') return <HouseholdAccessState phase={phase} error={error} />;
+  if (creationState.phase === 'session-expired') return <HouseholdAccessState phase="session-expired" />;
+  if (phase !== 'ready') {
+    return <HouseholdAccessState phase={phase} error={error} onRefresh={() => void refresh()} />;
+  }
   if (!user || !decision || decision.kind === 'redirect') {
     return <HouseholdAccessState phase="loading" />;
   }
@@ -74,8 +78,8 @@ export function HouseholdEntry({ destination }: { destination: HouseholdDestinat
           <label>ชื่อบ้าน<Input value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required placeholder="เช่น บ้านสวน" /></label>
           <label>จังหวัด <small>ไม่บังคับ</small><Input value={province} onChange={(event) => setProvince(event.target.value)} maxLength={100} /></label>
           <label>ผู้ให้บริการไฟฟ้า <small>ไม่บังคับ</small><Input value={electricityProvider} onChange={(event) => setElectricityProvider(event.target.value)} maxLength={50} placeholder="เช่น PEA หรือ MEA" /></label>
-          {createError && <p role="alert">{createError}</p>}
-          <Button type="submit" disabled={creating}>{creating ? 'กำลังสร้าง...' : 'สร้างบ้านและเริ่มใช้งาน'} <ArrowRight aria-hidden="true" /></Button>
+          {creationState.error && <p role="alert">{creationState.error}</p>}
+          <Button type="submit" disabled={creationState.phase === 'submitting'}>{creationState.phase === 'submitting' ? 'กำลังสร้าง...' : 'สร้างบ้านและเริ่มใช้งาน'} <ArrowRight aria-hidden="true" /></Button>
         </form>
       </Card> : <div className="household-choice-grid" role="list">
         {households.map((household) => <Card className="household-choice-card" role="listitem" key={household.id}>

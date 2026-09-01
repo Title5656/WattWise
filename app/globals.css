@@ -310,7 +310,8 @@ body{background:#eef3ef;color:var(--text);font-weight:400;letter-spacing:-.005em
 .household-state-card{width:min(520px,100%);display:flex;flex-direction:column;align-items:center;padding:32px;border:1px solid #ffffffc7;border-radius:18px;background:#ffffffad;color:#20332a;text-align:center;box-shadow:0 20px 55px #244d3512}
 .household-state-card h1{margin:18px 0 0;font-size:28px}
 .household-state-card p{margin:8px 0 20px;color:#718078;font-size:var(--text-body);line-height:1.6}
-.household-state-card a{min-height:44px}
+.household-state-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+.household-state-actions>a,.household-state-actions>button{min-height:44px}
 .state-spinner{animation:save-spin .9s linear infinite}
 @keyframes save-spin{to{transform:rotate(360deg)}}
 

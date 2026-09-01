@@ -1,68 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import type { CurrentUser, HouseholdMembership } from '@/lib/household-ui';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  createHouseholdMembershipsLifecycle,
+  type MembershipsState,
+} from '@/lib/household-client-lifecycle';
 
-export type MembershipsPhase = 'loading' | 'ready' | 'session-expired' | 'error';
-
-export type MembershipsState = {
-  phase: MembershipsPhase;
-  user: CurrentUser | null;
-  households: HouseholdMembership[];
-  error: string;
-};
-
-const initialState: MembershipsState = {
-  phase: 'loading',
-  user: null,
-  households: [],
-  error: '',
-};
-
-export function useHouseholdMemberships(): MembershipsState {
-  const [state, setState] = useState(initialState);
+export function useHouseholdMemberships(): MembershipsState & { refresh(): Promise<void> } {
+  const [lifecycle] = useState(() => createHouseholdMembershipsLifecycle(fetch));
+  const [state, setState] = useState<MembershipsState>(() => lifecycle.getState());
+  const refresh = useCallback(() => lifecycle.refresh(), [lifecycle]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    const unsubscribe = lifecycle.subscribe(setState);
+    const refreshOnFocus = () => { void lifecycle.focus(); };
+    const refreshOnVisibility = () => { void lifecycle.visibilityChanged(document.visibilityState); };
+    void lifecycle.mount();
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnVisibility);
+    return () => {
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnVisibility);
+      unsubscribe();
+      lifecycle.dispose();
+    };
+  }, [lifecycle]);
 
-    async function load() {
-      try {
-        const meResponse = await fetch('/api/me', { cache: 'no-store', signal: controller.signal });
-        if (meResponse.status === 401) {
-          setState({ ...initialState, phase: 'session-expired' });
-          return;
-        }
-        if (!meResponse.ok) throw new Error('ไม่สามารถโหลดข้อมูลบัญชีได้');
-        const me = await meResponse.json() as { user?: CurrentUser };
-        if (!me.user?.id || !me.user.email) throw new Error('ข้อมูลบัญชีไม่สมบูรณ์');
-
-        const householdsResponse = await fetch('/api/households', {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-        if (householdsResponse.status === 401) {
-          setState({ ...initialState, phase: 'session-expired' });
-          return;
-        }
-        if (!householdsResponse.ok) throw new Error('ไม่สามารถโหลดรายชื่อบ้านได้');
-        const result = await householdsResponse.json() as { households?: HouseholdMembership[] };
-        if (!Array.isArray(result.households)) throw new Error('ข้อมูลรายชื่อบ้านไม่สมบูรณ์');
-        setState({ phase: 'ready', user: me.user, households: result.households, error: '' });
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        setState({
-          ...initialState,
-          phase: 'error',
-          error: error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการโหลดข้อมูล',
-        });
-      }
-    }
-
-    void load();
-    return () => controller.abort();
-  }, []);
-
-  return state;
+  return { ...state, refresh };
 }
 
 export function useHouseholdContext(householdId: string) {

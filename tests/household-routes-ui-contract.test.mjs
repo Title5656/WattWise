@@ -20,14 +20,22 @@ test('explicit dashboard and My Home route wrappers pass the route household ID'
   assert.match(myHomeRoute, /HouseholdMyHome householdId=\{householdId\}/);
 });
 
-test('switching the route household remounts scoped UI state before rendering the new home', async () => {
+test('verified identity, household, or role changes replace scoped UI state', async () => {
   const [dashboard, myHome] = await Promise.all([
     readOptional('app/components/HouseholdDashboard.tsx'),
     readOptional('app/components/HouseholdMyHome.tsx'),
   ]);
 
-  assert.match(dashboard, /<HouseholdDashboardContent\s+key=\{householdId\}/);
-  assert.match(myHome, /<HouseholdMyHomeContent\s+key=\{householdId\}/);
+  assert.match(dashboard, /key=\{householdContentScopeKey\(context\.user, context\.household\)\}/);
+  assert.match(myHome, /key=\{householdContentScopeKey\(context\.user, context\.household\)\}/);
+});
+
+test('membership hook revalidates on focus and visible restoration without polling', async () => {
+  const hook = await readOptional('app/components/use-household-memberships.ts');
+
+  assert.match(hook, /window\.addEventListener\('focus', refreshOnFocus\)/);
+  assert.match(hook, /document\.addEventListener\('visibilitychange', refreshOnVisibility\)/);
+  assert.doesNotMatch(hook, /setInterval|setTimeout/);
 });
 
 test('dashboard loads and mutates only household-scoped dashboard and bill resources', async () => {
@@ -43,7 +51,7 @@ test('My Home activates Task 6 autosave only with verified user and route member
   const myHome = await readOptional('app/components/HouseholdMyHome.tsx');
 
   assert.match(myHome, /createScopedHomeAutosaveController/);
-  assert.match(myHome, /controller\.activate\(\{ userId: user\.id, householdId \}\)/);
+  assert.match(myHome, /controller\.activate\(\{ userId: autosaveUserId, householdId \}\)/);
   assert.match(myHome, /discardDraftAndReload/);
   assert.match(myHome, /controller\.retry\(\)/);
   assert.doesNotMatch(myHome, /['"]\/api\/home/);
@@ -73,7 +81,6 @@ test('compatibility entries use the zero-one-many household decision instead of 
   assert.match(root, /<HouseholdEntry destination="dashboard"/);
   assert.match(legacyHome, /<HouseholdEntry destination="my-home"/);
   assert.match(entry, /decideHouseholdEntry\(households, destination\)/);
-  assert.match(entry, /method: 'POST'/);
   assert.match(entry, /เลือกบ้านที่ต้องการ/);
   assert.doesNotMatch(entry, /households\[0\]/);
 });

@@ -6,9 +6,11 @@ import { Card } from '@/components/ui/card';
 export function HouseholdAccessState({
   phase,
   error,
+  onRefresh,
 }: {
   phase: 'loading' | 'session-expired' | 'access-denied' | 'error';
   error?: string;
+  onRefresh?: () => void;
 }) {
   const loading = phase === 'loading';
   const title = loading
@@ -31,7 +33,10 @@ export function HouseholdAccessState({
       <i>{loading ? <LoaderCircle className="state-spinner" aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />}</i>
       <h1>{title}</h1>
       <p>{detail}</p>
-      {!loading && <Button asChild variant="outline"><Link href="/">กลับหน้าเลือกบ้าน</Link></Button>}
+      {!loading && <div className="household-state-actions">
+        {onRefresh && <Button type="button" onClick={onRefresh}>ตรวจสอบบัญชีและสิทธิ์อีกครั้ง</Button>}
+        <Button asChild variant="outline"><Link href="/">กลับหน้าเลือกบ้าน</Link></Button>
+      </div>}
     </Card>
   </main>;
 }

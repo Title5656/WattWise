@@ -7,6 +7,7 @@ import { ArrowRight, Banknote, ChevronRight, Gauge, Pencil, Plus, Sparkles, Targ
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { createDashboardLifecycle, runDashboardMutation } from '@/lib/dashboard-lifecycle';
+import { householdContentScopeKey } from '@/lib/household-client-lifecycle';
 import { calculateDailyLoadProfile, calculateHomeSummary, type HomeAppliance } from '@/lib/home-config';
 import {
   canEditHousehold,
@@ -31,15 +32,20 @@ function formatNumber(value: number, digits = 0) {
 export function HouseholdDashboard({ householdId }: { householdId: string }) {
   const context = useHouseholdContext(householdId);
   if (context.phase !== 'ready') {
-    return <HouseholdAccessState phase={context.phase} error={context.error} />;
+    return <HouseholdAccessState
+      phase={context.phase}
+      error={context.error}
+      onRefresh={() => void context.refresh()}
+    />;
   }
   if (!context.user || !context.household) return <HouseholdAccessState phase="error" />;
   return <HouseholdDashboardContent
-    key={householdId}
+    key={householdContentScopeKey(context.user, context.household)}
     householdId={householdId}
     user={context.user}
     household={context.household}
     households={context.households}
+    onRefreshMemberships={context.refresh}
   />;
 }
 
@@ -48,11 +54,13 @@ function HouseholdDashboardContent({
   user,
   household,
   households,
+  onRefreshMemberships,
 }: {
   householdId: string;
   user: CurrentUser;
   household: HouseholdMembership;
   households: HouseholdMembership[];
+  onRefreshMemberships: () => Promise<void>;
 }) {
   const [homeItems, setHomeItems] = useState<HomeAppliance[]>([]);
   const [homeLoading, setHomeLoading] = useState(true);
@@ -208,7 +216,9 @@ function HouseholdDashboardContent({
     });
   }
 
-  if (pagePhase !== 'ready') return <HouseholdAccessState phase={pagePhase} />;
+  if (pagePhase !== 'ready') {
+    return <HouseholdAccessState phase={pagePhase} onRefresh={() => void onRefreshMemberships()} />;
+  }
   const myHomePath = householdMyHomePath(householdId);
 
   return <main className="dashboard-shell">

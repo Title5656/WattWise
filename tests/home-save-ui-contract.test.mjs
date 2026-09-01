@@ -8,7 +8,7 @@ test('My Home delegates durable scoped drafts and save scheduling to the Task 6 
   const source = await read();
 
   assert.match(source, /createScopedHomeAutosaveController/);
-  assert.match(source, /controller\.activate\(\{ userId: user\.id, householdId \}\)/);
+  assert.match(source, /controller\.activate\(\{ userId: autosaveUserId, householdId \}\)/);
   assert.match(source, /controller\.dispose\(\)/);
   assert.doesNotMatch(source, /syncPendingHomeSave|readPendingHomeSave|\/api\/home/);
 });
