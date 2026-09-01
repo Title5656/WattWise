@@ -150,7 +150,11 @@ export function createAuthDatabase() {
       sqlite.exec('BEGIN');
       try {
         const results = [];
-        for (const statement of statements) results.push(await statement.run());
+        for (const statement of statements) {
+          results.push(/^\s*SELECT\b/i.test(statement.sql)
+            ? await statement.all()
+            : await statement.run());
+        }
         sqlite.exec('COMMIT');
         return results;
       } catch (error) {

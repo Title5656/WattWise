@@ -1,10 +1,13 @@
 import { mapCatalogRow, type CatalogRow } from '../catalog-repository.ts';
 import { hydrateHomeItem, type HomeAppliance, type HomeSummary } from '../home-config.ts';
 import type { MonthlyEnergyRecord } from '../monthly-history.ts';
+import { HouseholdForbiddenError, HouseholdNotFoundError } from './auth-errors.ts';
+import type { HouseholdRole } from './household-access.ts';
 
 export type HouseholdHomeSnapshot = {
   revision: number;
   items: HomeAppliance[];
+  history: MonthlyEnergyRecord[];
 };
 
 export type PersistedHouseholdHomeItem = {
@@ -42,9 +45,11 @@ const INSERT_CHUNK_SIZE = 8;
 
 export async function readHouseholdHomeSnapshot(
   db: D1Database,
-  householdId: number,
+  userId: number,
+  householdPublicId: string,
 ): Promise<HouseholdHomeSnapshot> {
-  const result = await db.prepare(`SELECT households.home_revision AS revision,
+  const results = await db.batch([
+    db.prepare(`SELECT households.home_revision AS revision,
         h.id, h.instance_key AS instanceKey, h.quantity,
         h.hours_per_day AS hoursPerDay, h.cycles_per_month AS cyclesPerMonth,
         h.usage_schedule AS usageSchedule, m.catalog_key AS catalogKey,
@@ -57,17 +62,32 @@ export async function readHouseholdHomeSnapshot(
         m.efficiency_label AS efficiencyLabel, m.source_url AS sourceUrl,
         m.source_name AS sourceName, m.verified_at AS verifiedAt, m.confidence AS confidence
       FROM households
+      INNER JOIN household_members
+        ON household_members.household_id = households.id AND household_members.user_id = ?
       LEFT JOIN household_appliances h ON h.household_id = households.id
       LEFT JOIN appliance_models m ON m.id = h.appliance_model_id
       LEFT JOIN categories c ON c.id = m.category_id
       LEFT JOIN brands b ON b.id = m.brand_id
-      WHERE households.id = ?
+      WHERE households.public_id = ? AND households.status = 'active'
       ORDER BY h.position, h.id`)
-      .bind(householdId)
-      .all<HouseholdHomeRow>();
-  const revision = result.results[0]?.revision;
-  if (!Number.isInteger(revision)) throw new Error('Authorized household disappeared while reading Home.');
-  const items = result.results.filter((row) => row.id !== null).map((row) => {
+      .bind(userId, householdPublicId),
+    db.prepare(`SELECT records.billing_month AS billingMonth,
+        records.estimated_kwh AS estimatedKwh, records.estimated_bill AS estimatedBill,
+        records.actual_kwh AS actualKwh, records.actual_bill AS actualBill,
+        records.estimated_at AS estimatedAt, records.actual_at AS actualAt
+      FROM households
+      INNER JOIN household_members
+        ON household_members.household_id = households.id AND household_members.user_id = ?
+      INNER JOIN household_monthly_energy_records records ON records.household_id = households.id
+      WHERE households.public_id = ? AND households.status = 'active'
+      ORDER BY records.billing_month`)
+      .bind(userId, householdPublicId),
+  ]);
+  const snapshotRows = (results[0].results ?? []) as HouseholdHomeRow[];
+  const historyRows = (results[1].results ?? []) as HistoryRow[];
+  const revision = snapshotRows[0]?.revision;
+  if (!Number.isInteger(revision)) throw new HouseholdNotFoundError(householdPublicId);
+  const items = snapshotRows.filter((row) => row.id !== null).map((row) => {
     if (row.id === null) throw new Error('Unexpected empty household appliance row.');
     if (row.catalogKey === null || row.instanceKey === null) {
       throw new Error(`Household appliance ${row.id} has no canonical catalog or instance key.`);
@@ -82,29 +102,26 @@ export async function readHouseholdHomeSnapshot(
       usageSchedule: row.usageSchedule,
     }, mapCatalogRow(row as CatalogRow));
   });
-  return { revision, items };
+  return { revision, items, history: historyRows };
 }
 
-export async function readHouseholdMonthlyEnergyRecords(
+export async function resolveHouseholdHomeConflict(
   db: D1Database,
-  householdId: number,
-): Promise<MonthlyEnergyRecord[]> {
-  const result = await db.prepare(`SELECT billing_month AS billingMonth,
-      estimated_kwh AS estimatedKwh, estimated_bill AS estimatedBill,
-      actual_kwh AS actualKwh, actual_bill AS actualBill,
-      estimated_at AS estimatedAt, actual_at AS actualAt
-    FROM household_monthly_energy_records
-    WHERE household_id = ? ORDER BY billing_month`)
-    .bind(householdId)
-    .all<HistoryRow>();
-  return result.results;
-}
-
-export async function readHouseholdHomeRevision(db: D1Database, householdId: number): Promise<number> {
-  const result = await db.prepare('SELECT home_revision AS revision FROM households WHERE id = ?')
-    .bind(householdId)
-    .all<{ revision: number }>();
-  return Number(result.results[0]?.revision ?? 0);
+  userId: number,
+  householdPublicId: string,
+): Promise<number> {
+  const result = await db.prepare(`SELECT households.home_revision AS currentRevision,
+      household_members.role AS role
+    FROM households
+    INNER JOIN household_members
+      ON household_members.household_id = households.id AND household_members.user_id = ?
+    WHERE households.public_id = ? AND households.status = 'active'`)
+    .bind(userId, householdPublicId)
+    .all<{ currentRevision: number; role: HouseholdRole }>();
+  const row = result.results[0];
+  if (!row) throw new HouseholdNotFoundError(householdPublicId);
+  if (!['owner', 'admin', 'member'].includes(row.role)) throw new HouseholdForbiddenError(householdPublicId);
+  return row.currentRevision;
 }
 
 function revisionGuard(householdId: number, expectedRevision: number, userId: number) {
@@ -199,7 +216,7 @@ export async function replaceHouseholdHome(
     summary: Pick<HomeSummary, 'monthlyKwh' | 'monthlyBill'>;
     now: number;
   },
-): Promise<boolean> {
+): Promise<{ saved: boolean; history: MonthlyEnergyRecord[] }> {
   const guard = revisionGuard(input.householdId, input.expectedRevision, input.userId);
   const results = await db.batch([
     db.prepare(`DELETE FROM household_appliances
@@ -216,9 +233,23 @@ export async function replaceHouseholdHome(
       input.now,
       input.items.length > 0,
     ),
+    db.prepare(`SELECT records.billing_month AS billingMonth,
+        records.estimated_kwh AS estimatedKwh, records.estimated_bill AS estimatedBill,
+        records.actual_kwh AS actualKwh, records.actual_bill AS actualBill,
+        records.estimated_at AS estimatedAt, records.actual_at AS actualAt
+      FROM household_monthly_energy_records records
+      WHERE records.household_id = ?
+        AND EXISTS (SELECT 1 FROM households WHERE ${guard.sql})
+      ORDER BY records.billing_month`)
+      .bind(input.householdId, ...guard.values),
     db.prepare(`UPDATE households SET home_revision = home_revision + 1, updated_at = ?
       WHERE ${guard.sql}`)
       .bind(input.now, ...guard.values),
   ]);
-  return Number(results.at(-1)?.meta?.changes ?? 0) === 1;
+  const saved = Number(results.at(-1)?.meta?.changes ?? 0) === 1;
+  const historyResult = results.at(-2);
+  return {
+    saved,
+    history: saved ? ((historyResult?.results ?? []) as HistoryRow[]) : [],
+  };
 }

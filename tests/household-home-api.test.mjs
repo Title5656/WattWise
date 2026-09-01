@@ -165,48 +165,58 @@ test('a stale editor receives a revision conflict and the winning snapshot remai
   });
 });
 
-test('GET cannot pair a newer revision with appliance rows read before that revision', async () => {
+test('GET returns revision, appliances, and history from one snapshot when a concurrent save interleaves', async () => {
   const { db, sqlite } = setup();
-  sqlite.exec(`INSERT INTO household_appliances
-    (household_id, appliance_model_id, quantity, hours_per_day, days_per_month, instance_key, usage_schedule, position, created_at, updated_at)
-    VALUES (10, 101, 1, 4, 30, 'old-item', '${JSON.stringify(validItem().usageSchedule)}', 0, ${NOW}, ${NOW})`);
-  let releaseItemRead;
-  let itemRead;
-  const itemReadPromise = new Promise((resolve) => { itemRead = resolve; });
-  const releasePromise = new Promise((resolve) => { releaseItemRead = resolve; });
+  sqlite.exec(`
+    INSERT INTO household_appliances
+      (household_id, appliance_model_id, quantity, hours_per_day, days_per_month, instance_key, usage_schedule, position, created_at, updated_at)
+    VALUES (10, 101, 1, 4, 30, 'old-item', '${JSON.stringify(validItem().usageSchedule)}', 0, ${NOW}, ${NOW});
+    INSERT INTO household_monthly_energy_records
+      (household_id, billing_month, estimated_kwh, estimated_bill, estimated_at)
+    VALUES (10, '2026-08', 10, 50, 1);
+  `);
+  let hookFired = false;
+  let insideBatch = false;
+  const installConcurrentSave = () => {
+    if (hookFired) return;
+    hookFired = true;
+    sqlite.exec(`
+      UPDATE households SET home_revision = 1 WHERE id = 10;
+      DELETE FROM household_appliances WHERE household_id = 10;
+      INSERT INTO household_appliances
+        (household_id, appliance_model_id, quantity, hours_per_day, days_per_month, instance_key, usage_schedule, position, created_at, updated_at)
+      VALUES (10, 101, 2, 4, 30, 'new-item', '${JSON.stringify(validItem().usageSchedule)}', 0, ${NOW}, ${NOW});
+      UPDATE household_monthly_energy_records
+        SET estimated_kwh = 99, estimated_bill = 499, estimated_at = 2
+        WHERE household_id = 10 AND billing_month = '2026-08';
+    `);
+  };
   const racingDb = {
     ...db,
     prepare(sql) {
       const statement = db.prepare(sql);
-      return {
+      const wrap = (bound) => ({
+        sql,
+        values: bound.values,
         bind(...values) {
-          const bound = statement.bind(...values);
-          return {
-            async all() {
-              if (sql.startsWith('SELECT home_revision AS revision FROM households')) {
-                await itemReadPromise;
-                sqlite.exec(`
-                  UPDATE households SET home_revision = 1 WHERE id = 10;
-                  DELETE FROM household_appliances WHERE household_id = 10;
-                  INSERT INTO household_appliances
-                    (household_id, appliance_model_id, quantity, hours_per_day, days_per_month, instance_key, usage_schedule, position, created_at, updated_at)
-                  VALUES (10, 101, 2, 4, 30, 'new-item', '${JSON.stringify(validItem().usageSchedule)}', 0, ${NOW}, ${NOW});
-                `);
-                releaseItemRead();
-                return bound.all();
-              }
-              if (sql.includes('FROM household_appliances h')) {
-                const result = await bound.all();
-                itemRead();
-                await releasePromise;
-                return result;
-              }
-              return bound.all();
-            },
-            run: () => bound.run(),
-          };
+          return wrap(statement.bind(...values));
         },
-      };
+        async all() {
+          if (!insideBatch && sql.includes('FROM household_monthly_energy_records')) installConcurrentSave();
+          return bound.all();
+        },
+        run: () => bound.run(),
+      });
+      return wrap(statement);
+    },
+    async batch(statements) {
+      if (statements.every((statement) => /^\s*SELECT\b/i.test(statement.sql))) installConcurrentSave();
+      insideBatch = true;
+      try {
+        return await db.batch(statements);
+      } finally {
+        insideBatch = false;
+      }
     },
   };
   const api = homeModule.createHouseholdHomeApi(() => racingDb, { now: () => NOW });
@@ -217,11 +227,123 @@ test('GET cannot pair a newer revision with appliance rows read before that revi
   const observed = JSON.stringify({
     revision: response.body.revision,
     instanceIds: response.body.items.map((item) => item.instanceId),
+    estimatedKwh: response.body.history[0]?.estimatedKwh,
   });
+  assert.equal(hookFired, true, 'concurrent-save hook must fire');
   assert.ok(new Set([
-    JSON.stringify({ revision: 0, instanceIds: ['old-item'] }),
-    JSON.stringify({ revision: 1, instanceIds: ['new-item'] }),
+    JSON.stringify({ revision: 0, instanceIds: ['old-item'], estimatedKwh: 10 }),
+    JSON.stringify({ revision: 1, instanceIds: ['new-item'], estimatedKwh: 99 }),
   ]).has(observed), observed);
+});
+
+test('GET returns 404 when membership is removed before its transactional reads', async () => {
+  const { db, sqlite } = setup();
+  let hookFired = false;
+  const racingDb = {
+    ...db,
+    async batch(statements) {
+      hookFired = true;
+      sqlite.exec('DELETE FROM household_members WHERE household_id = 10 AND user_id = 2');
+      return db.batch(statements);
+    },
+  };
+  const api = homeModule.createHouseholdHomeApi(() => racingDb, { now: () => NOW });
+
+  const response = await api.GET(request('/api/households/hh_alpha/home', {
+    user: identities.member,
+  }), { householdId: 'hh_alpha' });
+
+  assert.equal(hookFired, true, 'transactional-read hook must fire');
+  assert.equal(response.status, 404);
+});
+
+test('successful PUT returns history captured before the final bump even when another save follows', async () => {
+  const { db, sqlite } = setup();
+  sqlite.exec(`INSERT INTO household_monthly_energy_records
+    (household_id, billing_month, estimated_kwh, estimated_bill, actual_kwh, actual_bill, estimated_at, actual_at)
+    VALUES (10, '2026-08', 10, 50, 110, 500, 1, 2)`);
+  let hookFired = false;
+  const racingDb = {
+    ...db,
+    async batch(statements) {
+      const results = await db.batch(statements);
+      if (statements.at(-1)?.sql.startsWith('UPDATE households SET home_revision = home_revision + 1')) {
+        hookFired = true;
+        sqlite.exec(`
+          UPDATE households SET home_revision = home_revision + 1 WHERE id = 10;
+          UPDATE household_monthly_energy_records
+            SET actual_kwh = 999, actual_bill = 9999, actual_at = 3
+            WHERE household_id = 10 AND billing_month = '2026-08';
+        `);
+      }
+      return results;
+    },
+  };
+  const api = homeModule.createHouseholdHomeApi(() => racingDb, { now: () => NOW });
+
+  const response = await json(await api.PUT(request('/api/households/hh_alpha/home', {
+    method: 'PUT', json: { expectedRevision: 0, items: [validItem('saved-item')] },
+  }), { householdId: 'hh_alpha' }));
+
+  assert.equal(hookFired, true, 'post-save hook must fire');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.revision, 1);
+  assert.equal(response.body.history[0].estimatedKwh, response.body.summary.monthlyKwh);
+  assert.equal(response.body.history[0].actualBill, 500);
+  assert.equal(sqlite.prepare(`SELECT actual_bill FROM household_monthly_energy_records
+    WHERE household_id = 10 AND billing_month = '2026-08'`).get().actual_bill, 9999);
+});
+
+test('conflict resolution atomically returns 404 or 403 when access changes during resolution', async () => {
+  for (const scenario of [
+    { mutation: 'DELETE FROM household_members WHERE household_id = 10 AND user_id = 2', status: 404 },
+    { mutation: "UPDATE household_members SET role = 'viewer' WHERE household_id = 10 AND user_id = 2", status: 403 },
+  ]) {
+    const { db, sqlite } = setup();
+    sqlite.exec('UPDATE households SET home_revision = 1 WHERE id = 10');
+    let accessReads = 0;
+    let hookFired = false;
+    const racingDb = {
+      ...db,
+      prepare(sql) {
+        const statement = db.prepare(sql);
+        const wrap = (bound) => ({
+          sql,
+          values: bound.values,
+          bind(...values) {
+            return wrap(statement.bind(...values));
+          },
+          async all() {
+            if (sql.includes('households.home_revision AS currentRevision')) {
+              sqlite.exec(scenario.mutation);
+              hookFired = true;
+              return bound.all();
+            }
+            if (sql.includes('SELECT household_members.user_id AS userId')) {
+              accessReads += 1;
+              if (accessReads === 2) {
+                const result = await bound.all();
+                sqlite.exec(scenario.mutation);
+                hookFired = true;
+                return result;
+              }
+            }
+            return bound.all();
+          },
+          run: () => bound.run(),
+        });
+        return wrap(statement);
+      },
+    };
+    const api = homeModule.createHouseholdHomeApi(() => racingDb, { now: () => NOW });
+
+    const response = await api.PUT(request('/api/households/hh_alpha/home', {
+      method: 'PUT', user: identities.member, json: { expectedRevision: 0, items: [validItem()] },
+    }), { householdId: 'hh_alpha' });
+
+    assert.equal(hookFired, true, 'conflict-resolution hook must fire');
+    assert.equal(response.status, scenario.status);
+  }
 });
 
 test('a writer demoted or removed before the batch cannot mutate the household', async () => {
@@ -335,5 +457,6 @@ test('a 100-item snapshot is chunked below D1 bind limits and keeps every positi
   })));
   assert.equal(batchCalls.length, 1);
   assert.ok(batchCalls[0].every((statement) => statement.values.length <= 100));
+  assert.match(batchCalls[0].at(-2).sql, /^SELECT records\.billing_month AS billingMonth/);
   assert.match(batchCalls[0].at(-1).sql, /^UPDATE households SET home_revision = home_revision \+ 1/);
 });

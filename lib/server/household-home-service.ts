@@ -4,12 +4,11 @@ import { getBillingMonth, selectRecentRecords } from '../monthly-history.ts';
 import { getUsageProfile } from '../usage-profiles.ts';
 import { normalizeUsageSchedule, scheduleHours, USAGE_PERIODS, type UsageSchedule } from '../usage-schedule.ts';
 import { StateConflictError, ValidationError } from './auth-errors.ts';
-import { requireHouseholdMember, requireHouseholdRole } from './household-access.ts';
+import { requireHouseholdRole } from './household-access.ts';
 import {
-  readHouseholdHomeRevision,
   readHouseholdHomeSnapshot,
-  readHouseholdMonthlyEnergyRecords,
   replaceHouseholdHome,
+  resolveHouseholdHomeConflict,
   type PersistedHouseholdHomeItem,
 } from './household-home-repository.ts';
 import type { AuthenticatedUser } from './current-user.ts';
@@ -132,11 +131,10 @@ async function validateHomeBody(db: D1Database, raw: unknown) {
 }
 
 async function responseBody(
-  db: D1Database,
   householdPublicId: string,
-  householdId: number,
   revision: number,
   items: HomeAppliance[],
+  history: Awaited<ReturnType<typeof readHouseholdHomeSnapshot>>['history'],
   now: number,
 ) {
   return {
@@ -144,7 +142,7 @@ async function responseBody(
     revision,
     items,
     summary: calculateHomeSummary(items, new Date(now)),
-    history: selectRecentRecords(await readHouseholdMonthlyEnergyRecords(db, householdId)),
+    history: selectRecentRecords(history),
   };
 }
 
@@ -152,10 +150,9 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
   const now = options.now ?? Date.now;
   return {
     async get(db: D1Database, user: AuthenticatedUser, householdPublicId: string) {
-      const access = await requireHouseholdMember(db, user.userId, householdPublicId);
       const timestamp = now();
-      const snapshot = await readHouseholdHomeSnapshot(db, access.householdId);
-      return responseBody(db, householdPublicId, access.householdId, snapshot.revision, snapshot.items, timestamp);
+      const snapshot = await readHouseholdHomeSnapshot(db, user.userId, householdPublicId);
+      return responseBody(householdPublicId, snapshot.revision, snapshot.items, snapshot.history, timestamp);
     },
 
     async put(db: D1Database, user: AuthenticatedUser, householdPublicId: string, request: Request) {
@@ -163,7 +160,7 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
       const validated = await validateHomeBody(db, await jsonBody(request));
       const timestamp = now();
       const summary = calculateHomeSummary(validated.homeItems, new Date(timestamp));
-      const saved = await replaceHouseholdHome(db, {
+      const result = await replaceHouseholdHome(db, {
         householdId: access.householdId,
         expectedRevision: validated.expectedRevision,
         userId: user.userId,
@@ -172,16 +169,14 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
         summary,
         now: timestamp,
       });
-      if (!saved) {
-        await requireHouseholdRole(db, user.userId, householdPublicId, EDIT_ROLES);
-        throw new HomeRevisionConflictError(await readHouseholdHomeRevision(db, access.householdId));
+      if (!result.saved) {
+        throw new HomeRevisionConflictError(await resolveHouseholdHomeConflict(db, user.userId, householdPublicId));
       }
       return responseBody(
-        db,
         householdPublicId,
-        access.householdId,
         validated.expectedRevision + 1,
         validated.homeItems,
+        result.history,
         timestamp,
       );
     },
