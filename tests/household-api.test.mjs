@@ -163,6 +163,58 @@ test('member listing exposes public profiles and role updates enforce the comple
   assert.equal(changed.body.member.role, 'viewer');
 });
 
+test('generic role updates cannot target the owner or let admins manage peer admins', async () => {
+  const { api, sqlite } = setup();
+
+  for (const [actor, target, role] of [
+    [users.a, 'usr_a', 'member'],
+    [users.admin, 'usr_a', 'viewer'],
+    [users.admin, 'usr_admin', 'member'],
+  ]) {
+    const response = await api.updateMember(request(`/api/households/hh_a/members/${target}`, {
+      method: 'PATCH', user: actor, json: { role },
+    }), { householdId: 'hh_a', userId: target });
+    assert.equal(response.status, 403, `${target} targeted as ${role}`);
+  }
+
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND role = 'owner'").get().count, 1);
+  assert.equal(sqlite.prepare("SELECT role FROM household_members WHERE household_id = 10 AND user_id = 3").get().role, 'admin');
+});
+
+test('role update rejects a target whose role changed after authorization', async () => {
+  const { db, sqlite } = setup();
+  let intercepted = false;
+  const racingDb = {
+    ...db,
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      return {
+        bind(...values) {
+          const bound = statement.bind(...values);
+          return {
+            all: () => bound.all(),
+            async run() {
+              if (!intercepted && sql.includes('UPDATE household_members SET role = ?, updated_at')) {
+                intercepted = true;
+                sqlite.exec("UPDATE household_members SET role = 'admin' WHERE household_id = 10 AND user_id = 4");
+              }
+              return bound.run();
+            },
+          };
+        },
+      };
+    },
+  };
+  const api = createHouseholdApi(() => racingDb, { now: () => NOW });
+
+  const response = await api.updateMember(request('/api/households/hh_a/members/usr_member', {
+    method: 'PATCH', user: users.admin, json: { role: 'viewer' },
+  }), { householdId: 'hh_a', userId: 'usr_member' });
+
+  assert.equal(response.status, 409);
+  assert.equal(sqlite.prepare('SELECT role FROM household_members WHERE household_id = 10 AND user_id = 4').get().role, 'admin');
+});
+
 test('member removal protects owners and self-service leave excludes owners', async () => {
   const { api, sqlite } = setup();
   assert.equal((await result(await api.removeMember(request('/api/households/hh_a/members/usr_a', {
@@ -197,6 +249,54 @@ test('ownership transfer atomically demotes the owner, promotes an existing memb
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND role = 'owner'").get().count, 1);
 });
 
+test('ownership transfer keeps the owner when the target disappears before the atomic batch', async () => {
+  const { db, sqlite } = setup();
+  let intercepted = false;
+  const racingDb = {
+    ...db,
+    async batch(statements) {
+      if (!intercepted) {
+        intercepted = true;
+        sqlite.exec('DELETE FROM household_members WHERE household_id = 10 AND user_id = 4');
+      }
+      return db.batch(statements);
+    },
+  };
+  const api = createHouseholdApi(() => racingDb, { now: () => NOW });
+
+  const response = await api.transferOwnership(request('/api/households/hh_a/transfer-ownership', {
+    method: 'POST', user: users.a, json: { userId: 'usr_member' },
+  }), { householdId: 'hh_a' });
+
+  assert.equal(response.status, 409);
+  assert.equal(sqlite.prepare("SELECT role FROM household_members WHERE household_id = 10 AND user_id = 1").get().role, 'owner');
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND role = 'owner'").get().count, 1);
+});
+
+test('ownership transfer rolls back demotion when promotion is forced to no-op inside the batch', async () => {
+  const { db, sqlite } = setup();
+  const racingDb = {
+    ...db,
+    async batch(statements) {
+      return db.batch([
+        statements[0],
+        db.prepare('UPDATE household_members SET role = role WHERE 0').bind(),
+        ...statements.slice(2),
+      ]);
+    },
+  };
+  const api = createHouseholdApi(() => racingDb, { now: () => NOW });
+
+  const response = await api.transferOwnership(request('/api/households/hh_a/transfer-ownership', {
+    method: 'POST', user: users.a, json: { userId: 'usr_member' },
+  }), { householdId: 'hh_a' });
+
+  assert.equal(response.status, 409);
+  assert.equal(sqlite.prepare('SELECT role FROM household_members WHERE household_id = 10 AND user_id = 1').get().role, 'owner');
+  assert.equal(sqlite.prepare('SELECT role FROM household_members WHERE household_id = 10 AND user_id = 4').get().role, 'member');
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND role = 'owner'").get().count, 1);
+});
+
 test('invitation creation normalizes email, hashes the stored token, limits admin roles, and never lists secrets', async () => {
   const { api, sqlite } = setup();
   assert.equal((await result(await api.createInvitation(request('/api/households/hh_a/invitations', {
@@ -221,6 +321,47 @@ test('invitation creation normalizes email, hashes the stored token, limits admi
   assert.equal(listed.body.invitations.length, 1);
   assert.equal(Object.hasOwn(listed.body.invitations[0], 'token'), false);
   assert.equal(Object.hasOwn(listed.body.invitations[0], 'tokenHash'), false);
+});
+
+test('invitation creation rejects an equivalent invite inserted after the pre-read', async () => {
+  const { db, sqlite } = setup();
+  let intercepted = false;
+  const racingDb = {
+    ...db,
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      return {
+        bind(...values) {
+          const bound = statement.bind(...values);
+          return {
+            all: () => bound.all(),
+            async run() {
+              if (!intercepted && sql.includes('INSERT INTO household_invites')) {
+                intercepted = true;
+                sqlite.exec(`INSERT INTO household_invites
+                  (household_id, invited_by_user_id, email_normalized, role, token_hash, expires_at, created_at)
+                  VALUES (10, 1, 'race@example.com', 'member', '${'a'.repeat(64)}', ${NOW + 10_000}, ${NOW})`);
+              }
+              return bound.run();
+            },
+          };
+        },
+      };
+    },
+  };
+  const api = createHouseholdApi(() => racingDb, {
+    now: () => NOW,
+    createInvitationToken: () => 'raw-secret-race',
+  });
+
+  const response = await result(await api.createInvitation(request('/api/households/hh_a/invitations', {
+    method: 'POST', user: users.a, json: { email: 'race@example.com', role: 'viewer' },
+  }), { householdId: 'hh_a' }));
+
+  assert.equal(response.status, 409);
+  assert.equal(Object.hasOwn(response.body, 'token'), false);
+  assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM household_invites WHERE household_id = 10 AND email_normalized = 'race@example.com' AND accepted_at IS NULL AND revoked_at IS NULL").get().count, 1);
+  assert.equal(sqlite.prepare("SELECT token_hash AS tokenHash FROM household_invites WHERE email_normalized = 'race@example.com'").get().tokenHash, 'a'.repeat(64));
 });
 
 test('invitation acceptance requires matching email and active unused unexpired token', async () => {
@@ -258,6 +399,49 @@ test('invitation acceptance requires matching email and active unused unexpired 
     method: 'POST', user: users.invitee, json: { token: hiddenToken },
   })))).status, 409);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM household_members WHERE household_id IN (20, 30) AND user_id = 6').get().count, 0);
+});
+
+test('invitation acceptance uses and persists the current verified email for the canonical subject', async () => {
+  const { api, sqlite } = setup();
+  const created = await result(await api.createInvitation(request('/api/households/hh_a/invitations', {
+    method: 'POST', user: users.a, json: { email: 'new-invitee@example.com', role: 'member' },
+  }), { householdId: 'hh_a' }));
+  const changedIdentity = identity('sub-invitee', 'NEW-INVITEE@EXAMPLE.COM', 'Invitee');
+
+  const accepted = await api.acceptInvitation(request('/api/invitations/accept', {
+    method: 'POST', user: changedIdentity, json: { token: created.body.invitation.token },
+  }));
+
+  assert.equal(accepted.status, 200);
+  assert.equal(sqlite.prepare('SELECT email FROM users WHERE id = 6').get().email, 'new-invitee@example.com');
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND user_id = 6').get().count, 1);
+});
+
+test('invitation acceptance does not consume or join when the household is deleted before its batch', async () => {
+  const { api: baseApi, db, sqlite } = setup();
+  const created = await result(await baseApi.createInvitation(request('/api/households/hh_a/invitations', {
+    method: 'POST', user: users.a, json: { email: 'invitee@example.com', role: 'viewer' },
+  }), { householdId: 'hh_a' }));
+  let intercepted = false;
+  const racingDb = {
+    ...db,
+    async batch(statements) {
+      if (!intercepted) {
+        intercepted = true;
+        sqlite.exec("UPDATE households SET status = 'deleted' WHERE id = 10");
+      }
+      return db.batch(statements);
+    },
+  };
+  const api = createHouseholdApi(() => racingDb, { now: () => NOW });
+
+  const response = await api.acceptInvitation(request('/api/invitations/accept', {
+    method: 'POST', user: users.invitee, json: { token: created.body.invitation.token },
+  }));
+
+  assert.equal(response.status, 409);
+  assert.equal(sqlite.prepare('SELECT accepted_at AS acceptedAt FROM household_invites').get().acceptedAt, null);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM household_members WHERE household_id = 10 AND user_id = 6').get().count, 0);
 });
 
 test('revocation is household-scoped and revoked invitations cannot create memberships', async () => {

@@ -23,7 +23,6 @@ import {
   acceptInvitationAtomically,
   createInvitation,
   findInvitationByHash,
-  hasEquivalentActiveInvitation,
   listActiveInvitations,
   revokeInvitation,
   type InvitationRole,
@@ -122,8 +121,20 @@ export function createHouseholdService(options: HouseholdServiceOptions = {}) {
       const role = memberRoleInput(body);
       const target = await findHouseholdMember(db, access.householdId, targetPublicId);
       if (!target) throw new MemberNotFoundError();
-      if (!canAssignRole(access.role, role)) throw new HouseholdForbiddenError(householdPublicId);
-      await updateMemberRole(db, access.householdId, target.internalUserId, role, now());
+      if (target.role === 'owner'
+        || (access.role === 'admin' && target.role === 'admin')
+        || !canAssignRole(access.role, role)) {
+        throw new HouseholdForbiddenError(householdPublicId);
+      }
+      const updated = await updateMemberRole(
+        db,
+        access.householdId,
+        target.internalUserId,
+        target.role,
+        role,
+        now(),
+      );
+      if (!updated) throw new StateConflictError('MEMBER_ROLE_CONFLICT', 'Member role changed before the update.');
       return { id: target.id, email: target.email, displayName: target.displayName, avatarUrl: target.avatarUrl, role };
     },
 
@@ -159,8 +170,18 @@ export function createHouseholdService(options: HouseholdServiceOptions = {}) {
         throw new StateConflictError('OWNERSHIP_TRANSFER_CONFLICT', 'Target must be an existing non-owner member.');
       }
       try {
-        await transferHouseholdOwnership(db, access.householdId, user.userId, target.internalUserId, now());
+        const transferred = await transferHouseholdOwnership(
+          db,
+          access.householdId,
+          user.userId,
+          target.internalUserId,
+          now(),
+        );
+        if (!transferred) {
+          throw new StateConflictError('OWNERSHIP_TRANSFER_CONFLICT', 'Ownership could not be transferred.');
+        }
       } catch (error) {
+        if (error instanceof StateConflictError) throw error;
         throw conflictFromDatabase(error, 'OWNERSHIP_TRANSFER_CONFLICT', 'Ownership could not be transferred.');
       }
       return { previousOwnerId: user.publicId, ownerId: target.id };
@@ -188,8 +209,7 @@ export function createHouseholdService(options: HouseholdServiceOptions = {}) {
       const input = invitationInput(body);
       if (!canAssignRole(access.role, input.role)) throw new HouseholdForbiddenError(householdPublicId);
       const timestamp = now();
-      if (await hasActiveMemberWithEmail(db, access.householdId, input.email)
-        || await hasEquivalentActiveInvitation(db, access.householdId, input.email, timestamp)) {
+      if (await hasActiveMemberWithEmail(db, access.householdId, input.email)) {
         throw new StateConflictError('INVITATION_CONFLICT', 'An active member or invitation already uses this email.');
       }
       const token = createInvitationToken();
@@ -197,7 +217,7 @@ export function createHouseholdService(options: HouseholdServiceOptions = {}) {
       const tokenHash = await sha256(token);
       const expiresAt = timestamp + INVITATION_LIFETIME_MS;
       try {
-        await createInvitation(db, {
+        const created = await createInvitation(db, {
           householdId: access.householdId,
           invitedByUserId: user.userId,
           email: input.email,
@@ -206,7 +226,14 @@ export function createHouseholdService(options: HouseholdServiceOptions = {}) {
           expiresAt,
           now: timestamp,
         });
+        if (!created) {
+          throw new StateConflictError(
+            'INVITATION_CONFLICT',
+            'An active member or invitation already uses this email.',
+          );
+        }
       } catch (error) {
+        if (error instanceof StateConflictError) throw error;
         throw conflictFromDatabase(error, 'INVITATION_CONFLICT', 'Invitation could not be created.');
       }
       return {

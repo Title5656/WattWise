@@ -41,21 +41,6 @@ export async function listActiveInvitations(
   return rows.results.map((row) => ({ ...row }));
 }
 
-export async function hasEquivalentActiveInvitation(
-  db: D1Database,
-  householdId: number,
-  email: string,
-  now: number,
-): Promise<boolean> {
-  const rows = await db.prepare(`SELECT 1 AS found FROM household_invites
-    WHERE household_id = ? AND email_normalized = ?
-      AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?
-    LIMIT 1`)
-    .bind(householdId, email, now)
-    .all<{ found: number }>();
-  return rows.results.length > 0;
-}
-
 export async function createInvitation(
   db: D1Database,
   input: {
@@ -67,10 +52,17 @@ export async function createInvitation(
     expiresAt: number;
     now: number;
   },
-): Promise<void> {
-  await db.prepare(`INSERT INTO household_invites
+): Promise<boolean> {
+  const result = await db.prepare(`INSERT INTO household_invites
       (household_id, invited_by_user_id, email_normalized, role, token_hash, expires_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    SELECT ?, ?, ?, ?, ?, ?, ?
+    WHERE EXISTS (SELECT 1 FROM households WHERE id = ? AND status = 'active')
+      AND NOT EXISTS (SELECT 1 FROM household_members
+        INNER JOIN users ON users.id = household_members.user_id
+        WHERE household_members.household_id = ? AND lower(trim(users.email)) = ?)
+      AND NOT EXISTS (SELECT 1 FROM household_invites
+        WHERE household_id = ? AND email_normalized = ?
+          AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?)`)
     .bind(
       input.householdId,
       input.invitedByUserId,
@@ -79,8 +71,15 @@ export async function createInvitation(
       input.tokenHash,
       input.expiresAt,
       input.now,
+      input.householdId,
+      input.householdId,
+      input.email,
+      input.householdId,
+      input.email,
+      input.now,
     )
     .run();
+  return Number(result.meta.changes) === 1;
 }
 
 export async function findInvitationByHash(db: D1Database, tokenHash: string): Promise<InvitationRow | null> {
@@ -121,11 +120,16 @@ export async function acceptInvitationAtomically(
 ): Promise<boolean> {
   const results = await db.batch([
     db.prepare(`UPDATE household_invites SET accepted_at = ?
-      WHERE id = ? AND token_hash = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?`)
+      WHERE id = ? AND token_hash = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?
+        AND EXISTS (SELECT 1 FROM households
+          WHERE households.id = household_invites.household_id AND households.status = 'active')`)
       .bind(now, invitation.id, invitation.tokenHash, now),
     db.prepare(`INSERT INTO household_members (household_id, user_id, role, created_at, updated_at)
-      SELECT household_id, ?, role, ?, ? FROM household_invites
-      WHERE id = ? AND accepted_at = ? AND changes() = 1`)
+      SELECT household_invites.household_id, ?, household_invites.role, ?, ?
+      FROM household_invites
+      INNER JOIN households ON households.id = household_invites.household_id
+      WHERE household_invites.id = ? AND household_invites.accepted_at = ?
+        AND households.status = 'active' AND changes() = 1`)
       .bind(userId, now, now, invitation.id, now),
   ]);
   return Number(results[0].meta.changes) === 1 && Number(results[1].meta.changes) === 1;

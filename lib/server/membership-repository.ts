@@ -45,12 +45,15 @@ export async function updateMemberRole(
   db: D1Database,
   householdId: number,
   userId: number,
+  expectedRole: HouseholdRole,
   role: HouseholdRole,
   now: number,
-): Promise<void> {
-  await db.prepare('UPDATE household_members SET role = ?, updated_at = ? WHERE household_id = ? AND user_id = ?')
-    .bind(role, now, householdId, userId)
+): Promise<boolean> {
+  const result = await db.prepare(`UPDATE household_members SET role = ?, updated_at = ?
+    WHERE household_id = ? AND user_id = ? AND role = ?`)
+    .bind(role, now, householdId, userId, expectedRole)
     .run();
+  return Number(result.meta.changes) === 1;
 }
 
 export async function removeMember(db: D1Database, householdId: number, userId: number): Promise<void> {
@@ -65,13 +68,29 @@ export async function transferHouseholdOwnership(
   currentOwnerId: number,
   nextOwnerId: number,
   now: number,
-): Promise<void> {
-  await db.batch([
-    db.prepare("UPDATE household_members SET role = 'admin', updated_at = ? WHERE household_id = ? AND user_id = ? AND role = 'owner'")
-      .bind(now, householdId, currentOwnerId),
-    db.prepare("UPDATE household_members SET role = 'owner', updated_at = ? WHERE household_id = ? AND user_id = ? AND role <> 'owner'")
-      .bind(now, householdId, nextOwnerId),
+): Promise<boolean> {
+  const results = await db.batch([
+    db.prepare(`UPDATE household_members SET role = 'admin', updated_at = ?
+      WHERE household_id = ? AND user_id = ? AND role = 'owner'
+        AND EXISTS (SELECT 1 FROM household_members AS target
+          WHERE target.household_id = ? AND target.user_id = ? AND target.role <> 'owner')`)
+      .bind(now, householdId, currentOwnerId, householdId, nextOwnerId),
+    db.prepare(`UPDATE household_members SET role = 'owner', updated_at = ?
+      WHERE household_id = ? AND user_id = ? AND role <> 'owner' AND changes() = 1
+        AND NOT EXISTS (SELECT 1 FROM household_members AS owner
+          WHERE owner.household_id = ? AND owner.role = 'owner')
+        AND EXISTS (SELECT 1 FROM household_members AS previous_owner
+          WHERE previous_owner.household_id = ? AND previous_owner.user_id = ? AND previous_owner.role = 'admin')`)
+      .bind(now, householdId, nextOwnerId, householdId, householdId, currentOwnerId),
+    db.prepare(`UPDATE household_members
+      SET role = CASE
+        WHEN (SELECT COUNT(*) FROM household_members AS owner
+          WHERE owner.household_id = ? AND owner.role = 'owner') = 1
+        THEN role ELSE '__owner_invariant_failed__' END
+      WHERE household_id = ? AND user_id = ?`)
+      .bind(householdId, householdId, currentOwnerId),
   ]);
+  return Number(results[0].meta.changes) === 1 && Number(results[1].meta.changes) === 1;
 }
 
 export async function hasActiveMemberWithEmail(

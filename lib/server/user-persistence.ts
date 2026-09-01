@@ -38,6 +38,12 @@ export function createUserProvisioner(options: UserProvisionerOptions = {}) {
     }
 
     if (!user) throw new Error('Unable to provision authenticated user.');
+    if (user.email !== identity.email) {
+      await db.prepare('UPDATE users SET email = ?, updated_at = ? WHERE id = ?')
+        .bind(identity.email, now(), user.userId)
+        .run();
+      user = { ...user, email: identity.email };
+    }
     return {
       userId: user.userId,
       publicId: user.publicId,

@@ -52,7 +52,7 @@ export function createAuthDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      role TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       UNIQUE (household_id, user_id)
