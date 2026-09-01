@@ -10,9 +10,10 @@ type NumberStepperProps = StepperOptions & {
   unit?: string;
   onChange: (value: number) => void;
   onEmpty?: () => void;
+  disabled?: boolean;
 };
 
-export function NumberStepper({ label, value, unit, min, max, step, onChange, onEmpty }: NumberStepperProps) {
+export function NumberStepper({ label, value, unit, min, max, step, onChange, onEmpty, disabled = false }: NumberStepperProps) {
   const [draft, setDraft] = useState(String(value));
   const [editing, setEditing] = useState(false);
   const options = { min, max, step };
@@ -32,7 +33,7 @@ export function NumberStepper({ label, value, unit, min, max, step, onChange, on
   return <div className="number-stepper">
     <span className="number-stepper-label">{label}</span>
     <div className="number-stepper-control">
-      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={decrement} disabled={value <= min} aria-label={`ลด${label}`}><Minus aria-hidden="true" /></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={decrement} disabled={disabled || value <= min} aria-label={`ลด${label}`}><Minus aria-hidden="true" /></button>
       <label>
         <input
           type="number"
@@ -41,6 +42,7 @@ export function NumberStepper({ label, value, unit, min, max, step, onChange, on
           max={max}
           step={step}
           value={editing ? draft : String(value)}
+          disabled={disabled}
           aria-label={label}
           onFocus={() => { setEditing(true); setDraft(String(value)); }}
           onChange={(event) => {
@@ -54,7 +56,7 @@ export function NumberStepper({ label, value, unit, min, max, step, onChange, on
         />
         {unit && <small>{unit}</small>}
       </label>
-      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={increment} disabled={max !== undefined && value >= max} aria-label={`เพิ่ม${label}`}><Plus aria-hidden="true" /></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={increment} disabled={disabled || (max !== undefined && value >= max)} aria-label={`เพิ่ม${label}`}><Plus aria-hidden="true" /></button>
     </div>
   </div>;
 }

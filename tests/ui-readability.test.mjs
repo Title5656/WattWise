@@ -83,9 +83,21 @@ test('interactive controls keep a 44px touch target', async () => {
     '.home-status button',
     '.sidebar-account',
     '.insight-action',
+    '.household-switcher select',
+    '.household-choice-card a',
+    '.household-create-card button',
+    '.autosave-message button',
   ];
 
   for (const selector of selectors) {
     assert.match(latestRule(styles, selector), /min-height\s*:\s*44px/, selector);
   }
+});
+
+test('household entry and identity controls remain readable on mobile', async () => {
+  const styles = await readStyles();
+
+  assert.match(styles, /\.household-entry-content\s*\{[^}]*width:\s*min\(920px,100%\)/);
+  assert.match(styles, /@media\s*\(max-width:\s*700px\)[^{]*\{[\s\S]*\.household-choice-card\s*\{[^}]*grid-template-columns:\s*44px minmax\(0,1fr\)/);
+  assert.match(styles, /@media\s*\(max-width:\s*700px\)[^{]*\{[\s\S]*\.builder-identity \.header-actions\s*\{[^}]*flex-wrap:\s*wrap/);
 });

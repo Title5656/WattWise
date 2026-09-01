@@ -5,7 +5,7 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
 test('My Home fetches the catalog API with a 300 ms search debounce instead of filtering the static catalog', async () => {
-  const source = await read('../app/my-home/page.tsx');
+  const source = await read('../app/components/HouseholdMyHome.tsx');
 
   assert.match(source, /buildCatalogUrl/);
   assert.match(source, /debounce\([^]*300\)/);
@@ -13,7 +13,7 @@ test('My Home fetches the catalog API with a 300 ms search debounce instead of f
 });
 
 test('query and category changes reset results and obsolete catalog requests are cancelled', async () => {
-  const source = await read('../app/my-home/page.tsx');
+  const source = await read('../app/components/HouseholdMyHome.tsx');
 
   assert.match(source, /createLatestRequestTracker/);
   assert.match(source, /dispatchCatalog\(\{ type: 'reset' \}\)/);
@@ -23,7 +23,7 @@ test('query and category changes reset results and obsolete catalog requests are
 });
 
 test('catalog UI exposes accessible loading, retry, empty, and non-blocking load-more states', async () => {
-  const source = await read('../app/my-home/page.tsx');
+  const source = await read('../app/components/HouseholdMyHome.tsx');
 
   assert.match(source, /role="status"/);
   assert.match(source, /role="alert"/);
@@ -35,7 +35,7 @@ test('catalog UI exposes accessible loading, retry, empty, and non-blocking load
 });
 
 test('catalog cards use API imagery and honest energy-spec units when adding full models', async () => {
-  const source = await read('../app/my-home/page.tsx');
+  const source = await read('../app/components/HouseholdMyHome.tsx');
 
   assert.match(source, /src=\{item\.image\}/);
   assert.match(source, /formatCatalogEnergySpec\(item\.energySpec/);
@@ -45,7 +45,7 @@ test('catalog cards use API imagery and honest energy-spec units when adding ful
 });
 
 test('dashboard refreshes use latest-only cancellation and bill saves trigger the guarded refresh', async () => {
-  const source = await read('../app/page.tsx');
+  const source = await read('../app/components/HouseholdDashboard.tsx');
 
   assert.match(source, /createLatestRequestTracker/);
   assert.match(source, /createDashboardLifecycle/);
