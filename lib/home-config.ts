@@ -219,6 +219,7 @@ export function calculateHomeSummary(items: HomeAppliance[], billingDate = new D
 
 export function hydrateHomeItem(row: {
   id: number;
+  instanceKey?: string | null;
   applianceKey: string;
   quantity: number;
   hoursPerDay: number;
@@ -231,7 +232,7 @@ export function hydrateHomeItem(row: {
     : parseUsageSchedule(row.usageSchedule, appliance.usageProfileId, row.hoursPerDay);
   return {
     ...appliance,
-    instanceId: `saved-${row.id}`,
+    instanceId: row.instanceKey ?? `saved-${row.id}`,
     quantity: row.quantity,
     hoursPerDay: profile.inputKind === 'hours' ? scheduleHours(usageSchedule) : null,
     cyclesPerMonth: profile.inputKind === 'cycles'

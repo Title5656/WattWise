@@ -29,6 +29,11 @@ export type CatalogQuery = {
   pageSize: number;
 };
 
+export type ActiveCatalogModel = {
+  modelId: number;
+  appliance: Appliance;
+};
+
 export type CatalogRow = {
   catalogKey: string;
   categorySlug: string;
@@ -161,6 +166,20 @@ export async function readCatalogModelsByKeys(db: D1Database, keys: string[]): P
     WHERE m.catalog_key IN (${placeholders})
   `, uniqueKeys);
   return rows.map(mapCatalogRow);
+}
+
+export async function readActiveCatalogModelsByKeys(db: D1Database, keys: string[]): Promise<ActiveCatalogModel[]> {
+  const uniqueKeys = [...new Set(keys)];
+  if (uniqueKeys.length === 0) return [];
+  const placeholders = uniqueKeys.map(() => '?').join(', ');
+  const rows = await all<CatalogRow & { modelId: number }>(db, `
+    SELECT m.id AS modelId, ${catalogColumns}
+    FROM appliance_models m
+    JOIN categories c ON c.id = m.category_id
+    JOIN brands b ON b.id = m.brand_id
+    WHERE m.is_active = 1 AND m.catalog_key IN (${placeholders})
+  `, uniqueKeys);
+  return rows.map((row) => ({ modelId: row.modelId, appliance: mapCatalogRow(row) }));
 }
 
 export async function readCatalog(db: D1Database, query: CatalogQuery): Promise<CatalogResponse> {

@@ -2,6 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 
 function createStatement(sqlite, sql, values = []) {
   return {
+    sql,
+    values,
     bind(...nextValues) {
       return createStatement(sqlite, sql, nextValues);
     },
@@ -71,13 +73,80 @@ export function createAuthDatabase() {
       revoked_at INTEGER,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY,
+      slug TEXT NOT NULL,
+      name_th TEXT NOT NULL
+    );
+    CREATE TABLE brands (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL
+    );
+    CREATE TABLE appliance_models (
+      id INTEGER PRIMARY KEY,
+      catalog_key TEXT NOT NULL UNIQUE,
+      category_id INTEGER NOT NULL REFERENCES categories(id),
+      brand_id INTEGER NOT NULL REFERENCES brands(id),
+      model_code TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      calculation_method TEXT,
+      rated_power_w REAL,
+      annual_energy_kwh REAL,
+      energy_per_cycle_kwh REAL,
+      load_factor REAL,
+      usage_profile TEXT,
+      capacity_value REAL,
+      capacity_unit TEXT,
+      efficiency_label TEXT,
+      source_url TEXT,
+      source_name TEXT,
+      verified_at INTEGER,
+      confidence TEXT NOT NULL,
+      is_active INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL
+    );
+    CREATE TABLE household_appliances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+      appliance_model_id INTEGER REFERENCES appliance_models(id),
+      custom_name TEXT,
+      custom_power_w REAL,
+      room TEXT NOT NULL DEFAULT 'ไม่ระบุ',
+      quantity INTEGER NOT NULL DEFAULT 1,
+      hours_per_day REAL,
+      days_per_month INTEGER NOT NULL DEFAULT 30,
+      cycles_per_month REAL,
+      load_factor REAL,
+      start_minute INTEGER,
+      end_minute INTEGER,
+      instance_key TEXT,
+      usage_schedule TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE (household_id, instance_key)
+    );
+    CREATE TABLE household_monthly_energy_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+      billing_month TEXT NOT NULL,
+      estimated_kwh REAL,
+      estimated_bill REAL,
+      actual_kwh REAL,
+      actual_bill REAL,
+      estimated_at INTEGER,
+      actual_at INTEGER,
+      UNIQUE (household_id, billing_month)
+    );
   `);
 
+  const batchCalls = [];
   const db = {
     prepare(sql) {
       return createStatement(sqlite, sql);
     },
     async batch(statements) {
+      batchCalls.push(statements);
       sqlite.exec('BEGIN');
       try {
         const results = [];
@@ -91,5 +160,5 @@ export function createAuthDatabase() {
     },
   };
 
-  return { db, sqlite };
+  return { db, sqlite, batchCalls };
 }
