@@ -41,6 +41,7 @@ export type ScopedHomeAutosavePhase =
   | 'saving'
   | 'saved'
   | 'conflict'
+  | 'access-denied'
   | 'session-expired'
   | 'retryable-error';
 
@@ -58,10 +59,12 @@ type Session = {
   generation: number;
   stopped: boolean;
   blocked: boolean;
+  loaded: boolean;
   revision: number | null;
   confirmedBody: string | null;
   items: HomeAppliance[];
   pending: ScopedHomeSaveEnvelope | null;
+  inFlight: ScopedHomeSaveEnvelope | null;
   timer: unknown;
   requestController: AbortController | null;
   queue: Promise<void>;
@@ -212,6 +215,20 @@ export function createScopedHomeAutosaveController({
     });
   };
 
+  const denyAccess = (session: Session) => {
+    if (!isActive(session)) return;
+    session.blocked = true;
+    cancelTimer(session);
+    publish({
+      phase: 'access-denied',
+      scope: session.scope,
+      generation: session.generation,
+      revision: session.revision,
+      items: session.items,
+      currentRevision: null,
+    });
+  };
+
   const queueSave = (session: Session, envelope: ScopedHomeSaveEnvelope) => {
     session.queue = session.queue.catch(() => undefined).then(async () => {
       if (!isActive(session) || session.blocked) return;
@@ -232,6 +249,7 @@ export function createScopedHomeAutosaveController({
         });
         const requestController = new AbortController();
         session.requestController = requestController;
+        session.inFlight = envelope;
         try {
           const response = await fetch(homeUrl(session.scope), {
             method: 'PUT',
@@ -243,6 +261,10 @@ export function createScopedHomeAutosaveController({
 
           if (response.status === 401) {
             expire(session);
+            return;
+          }
+          if (response.status === 403 || response.status === 404) {
+            denyAccess(session);
             return;
           }
           if (response.status === 409) {
@@ -305,6 +327,7 @@ export function createScopedHomeAutosaveController({
           if (!isActive(session) || isAbortError(error)) return;
           markRetryable(session);
         } finally {
+          if (session.inFlight === envelope) session.inFlight = null;
           if (session.requestController === requestController) session.requestController = null;
         }
       });
@@ -328,10 +351,12 @@ export function createScopedHomeAutosaveController({
       generation,
       stopped: false,
       blocked: false,
+      loaded: false,
       revision: null,
       confirmedBody: null,
       items: [],
       pending: null,
+      inFlight: null,
       timer: null,
       requestController: null,
       queue: Promise.resolve(),
@@ -362,6 +387,10 @@ export function createScopedHomeAutosaveController({
         expire(session);
         return;
       }
+      if (response.status === 403 || response.status === 404) {
+        denyAccess(session);
+        return;
+      }
       if (!response.ok) {
         markRetryable(session);
         return;
@@ -377,6 +406,7 @@ export function createScopedHomeAutosaveController({
         markRetryable(session);
         return;
       }
+      session.loaded = true;
       if (pending) {
         session.confirmedBody = confirmedBody;
         if (snapshot.revision !== pending.expectedRevision) {
@@ -430,6 +460,21 @@ export function createScopedHomeAutosaveController({
       if (!body) return false;
       session.items = items;
       if (body === session.confirmedBody) {
+        if (session.inFlight) {
+          const updatedAt = Math.max(now(), (session.pending?.updatedAt ?? -1) + 1);
+          const pending = stageScopedPendingHomeSave(storage, session.scope, session.revision, body, updatedAt);
+          if (!pending) return false;
+          session.pending = pending;
+          publish({
+            phase: 'ready',
+            scope: session.scope,
+            generation: session.generation,
+            revision: session.revision,
+            items: session.items,
+            currentRevision: null,
+          });
+          return true;
+        }
         if (session.pending) clearScopedPendingHomeSave(storage, session.scope, session.pending);
         session.pending = null;
         cancelTimer(session);
@@ -462,7 +507,8 @@ export function createScopedHomeAutosaveController({
       const session = active;
       if (!session || !isActive(session) || state.phase !== 'retryable-error') return;
       session.blocked = false;
-      if (session.pending) queueSave(session, session.pending);
+      if (!session.loaded) void activate(session.scope);
+      else if (session.pending) queueSave(session, session.pending);
       else void activate(session.scope);
     },
     async discardDraftAndReload() {

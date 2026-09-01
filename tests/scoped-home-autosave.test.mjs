@@ -179,6 +179,75 @@ test('an existing draft with a stale revision becomes a non-retrying conflict', 
   assert.equal(puts, 0);
 });
 
+test('retry after pending-draft GET failure revalidates with GET before any PUT', async () => {
+  const localStorage = storage();
+  const timer = scheduler();
+  outbox.stageScopedPendingHomeSave(
+    localStorage,
+    scopeA1,
+    2,
+    JSON.stringify({ items: [item('draft')] }),
+    90,
+  );
+  const calls = [];
+  let gets = 0;
+  const { controller } = createController({
+    localStorage,
+    timer,
+    fetch: async (_url, init = {}) => {
+      calls.push(init);
+      if (init.method === 'PUT') return response(200, { revision: 3, items: [item('draft')] });
+      gets += 1;
+      return gets === 1
+        ? response(503, { error: 'unavailable' })
+        : response(200, { revision: 2, items: [item('server')] });
+    },
+  });
+
+  await controller.activate(scopeA1);
+  assert.equal(controller.getState().phase, 'retryable-error');
+  controller.retry();
+  await flushPromises();
+
+  assert.deepEqual(calls.map((call) => call.method), [undefined, undefined]);
+  assert.equal(controller.getState().phase, 'ready');
+  timer.flush();
+  await flushPromises();
+  assert.deepEqual(calls.map((call) => call.method), [undefined, undefined, 'PUT']);
+});
+
+test('403 and 404 Home access failures preserve drafts in a terminal access-denied state', async () => {
+  for (const status of [403, 404]) {
+    const localStorage = storage();
+    const timer = scheduler();
+    const draft = outbox.stageScopedPendingHomeSave(
+      localStorage,
+      scopeA1,
+      2,
+      JSON.stringify({ items: [item(`draft-${status}`)] }),
+      90,
+    );
+    let calls = 0;
+    const { controller } = createController({
+      localStorage,
+      timer,
+      fetch: async () => {
+        calls += 1;
+        return response(status, { error: 'denied' });
+      },
+    });
+
+    await controller.activate(scopeA1);
+    controller.retry();
+    timer.flush();
+    await flushPromises();
+
+    assert.equal(controller.getState().phase, 'access-denied');
+    assert.deepEqual(outbox.readScopedPendingHomeSave(localStorage, scopeA1), draft);
+    assert.equal(calls, 1);
+  }
+});
+
 test('Task 7 can observe state, unsubscribe, and discard a conflict draft before authoritative reload', async () => {
   const localStorage = storage();
   outbox.stageScopedPendingHomeSave(
@@ -299,6 +368,40 @@ test('a successful save rebases a queued edit to the returned revision', async (
   assert.equal(controller.getState().phase, 'saved');
 });
 
+test('reverting to the confirmed body during an in-flight PUT stages a compensating save', async () => {
+  const firstSave = deferred();
+  const secondSave = deferred();
+  const puts = [];
+  let timestamp = 100;
+  const { controller, localStorage, timer } = createController({
+    now: () => timestamp++,
+    fetch: async (_url, init = {}) => {
+      if (init.method !== 'PUT') return response(200, { revision: 4, items: [] });
+      puts.push(JSON.parse(init.body));
+      return puts.length === 1 ? firstSave.promise : secondSave.promise;
+    },
+  });
+  await controller.activate(scopeA1);
+  controller.edit([item('temporary')]);
+  timer.flush();
+  await flushPromises();
+
+  controller.edit([]);
+  assert.ok(outbox.readScopedPendingHomeSave(localStorage, scopeA1));
+  firstSave.resolve(response(200, { revision: 5, items: [item('temporary')] }));
+  await flushPromises();
+
+  assert.equal(puts.length, 2);
+  assert.deepEqual(puts[1], { expectedRevision: 5, items: [] });
+  secondSave.resolve(response(200, { revision: 6, items: [] }));
+  await flushPromises();
+
+  assert.equal(controller.getState().phase, 'saved');
+  assert.equal(controller.getState().revision, 6);
+  assert.deepEqual(controller.getState().items, []);
+  assert.equal(outbox.readScopedPendingHomeSave(localStorage, scopeA1), null);
+});
+
 test('409 preserves the draft, records current revision, and never retries automatically', async () => {
   let puts = 0;
   const { controller, localStorage, timer } = createController({
@@ -377,6 +480,30 @@ test('network failure is retryable within the same scope and preserves its draft
   assert.equal(puts, 2);
   assert.equal(controller.getState().phase, 'saved');
   assert.equal(outbox.readScopedPendingHomeSave(localStorage, scopeA1), null);
+});
+
+test('403 and 404 save failures stop autosave and cannot be manually retried', async () => {
+  for (const status of [403, 404]) {
+    let puts = 0;
+    const { controller, localStorage, timer } = createController({
+      fetch: async (_url, init = {}) => {
+        if (init.method !== 'PUT') return response(200, { revision: 2, items: [] });
+        puts += 1;
+        return response(status, { error: 'denied' });
+      },
+    });
+    await controller.activate(scopeA1);
+    controller.edit([item(`denied-${status}`)]);
+    timer.flush();
+    await flushPromises();
+    controller.retry();
+    timer.flush();
+    await flushPromises();
+
+    assert.equal(controller.getState().phase, 'access-denied');
+    assert.ok(outbox.readScopedPendingHomeSave(localStorage, scopeA1));
+    assert.equal(puts, 1);
+  }
 });
 
 test('an older same-scope completion preserves a newer tab draft', async () => {
