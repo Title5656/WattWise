@@ -231,11 +231,11 @@ export function createScopedHomeAutosaveController({
 
   const queueSave = (session: Session, envelope: ScopedHomeSaveEnvelope) => {
     session.queue = session.queue.catch(() => undefined).then(async () => {
-      if (!isActive(session) || session.blocked) return;
+      if (!isActive(session) || session.blocked || !session.loaded) return;
       const durable = readScopedPendingHomeSave(storage, session.scope);
       if (!envelopeMatches(durable, envelope)) return;
       await runWithLock(session, async () => {
-        if (!isActive(session) || session.blocked) return;
+        if (!isActive(session) || session.blocked || !session.loaded) return;
         const lockedPending = readScopedPendingHomeSave(storage, session.scope);
         if (!envelopeMatches(lockedPending, envelope)) return;
 

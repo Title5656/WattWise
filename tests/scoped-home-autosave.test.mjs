@@ -147,6 +147,45 @@ test('activation revalidates an existing scoped draft against the authoritative 
   assert.equal(calls.filter((call) => call.method === 'PUT').length, 1);
 });
 
+test('editing an existing draft while its authoritative GET is pending cannot PUT before revision validation', async () => {
+  const localStorage = storage();
+  const timer = scheduler();
+  outbox.stageScopedPendingHomeSave(
+    localStorage,
+    scopeA1,
+    5,
+    JSON.stringify({ items: [item('draft')] }),
+    90,
+  );
+  const loading = deferred();
+  const puts = [];
+  const { controller } = createController({
+    localStorage,
+    timer,
+    fetch: async (_url, init = {}) => {
+      if (init.method === 'PUT') {
+        puts.push(JSON.parse(init.body));
+        return response(200, { revision: 6, items: [item('edited')] });
+      }
+      return loading.promise;
+    },
+  });
+
+  const activation = controller.activate(scopeA1);
+  assert.equal(controller.edit([item('edited')]), true);
+  timer.flush();
+  await flushPromises();
+  assert.equal(puts.length, 0);
+
+  loading.resolve(response(200, { revision: 5, items: [item('server')] }));
+  await activation;
+  timer.flush();
+  await flushPromises();
+
+  assert.equal(puts.length, 1);
+  assert.deepEqual(puts[0], { expectedRevision: 5, items: [item('edited')] });
+});
+
 test('an existing draft with a stale revision becomes a non-retrying conflict', async () => {
   const localStorage = storage();
   const timer = scheduler();
