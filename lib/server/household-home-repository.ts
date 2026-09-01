@@ -3,8 +3,10 @@ import { hydrateHomeItem, type HomeAppliance, type HomeSummary } from '../home-c
 import type { MonthlyEnergyRecord } from '../monthly-history.ts';
 import { HouseholdForbiddenError, HouseholdNotFoundError } from './auth-errors.ts';
 import type { HouseholdRole } from './household-access.ts';
+import type { HouseholdSummary } from './household-repository.ts';
 
 export type HouseholdHomeSnapshot = {
+  household: HouseholdSummary;
   revision: number;
   items: HomeAppliance[];
   history: MonthlyEnergyRecord[];
@@ -21,6 +23,11 @@ export type PersistedHouseholdHomeItem = {
 };
 
 type HouseholdHomeRow = Omit<CatalogRow, 'catalogKey'> & {
+  householdPublicId: string;
+  householdName: string;
+  householdProvince: string | null;
+  householdElectricityProvider: string | null;
+  householdRole: HouseholdRole;
   revision: number;
   id: number | null;
   catalogKey: string | null;
@@ -49,7 +56,10 @@ export async function readHouseholdHomeSnapshot(
   householdPublicId: string,
 ): Promise<HouseholdHomeSnapshot> {
   const results = await db.batch([
-    db.prepare(`SELECT households.home_revision AS revision,
+    db.prepare(`SELECT households.public_id AS householdPublicId,
+        households.name AS householdName, households.province AS householdProvince,
+        households.electricity_provider AS householdElectricityProvider,
+        household_members.role AS householdRole, households.home_revision AS revision,
         h.id, h.instance_key AS instanceKey, h.quantity,
         h.hours_per_day AS hoursPerDay, h.cycles_per_month AS cyclesPerMonth,
         h.usage_schedule AS usageSchedule, m.catalog_key AS catalogKey,
@@ -87,6 +97,15 @@ export async function readHouseholdHomeSnapshot(
   const historyRows = (results[1].results ?? []) as HistoryRow[];
   const revision = snapshotRows[0]?.revision;
   if (!Number.isInteger(revision)) throw new HouseholdNotFoundError(householdPublicId);
+  const householdRow = snapshotRows[0];
+  if (!householdRow) throw new HouseholdNotFoundError(householdPublicId);
+  const household: HouseholdSummary = {
+    id: householdRow.householdPublicId,
+    name: householdRow.householdName,
+    province: householdRow.householdProvince,
+    electricityProvider: householdRow.householdElectricityProvider,
+    role: householdRow.householdRole,
+  };
   const items = snapshotRows.filter((row) => row.id !== null).map((row) => {
     if (row.id === null) throw new Error('Unexpected empty household appliance row.');
     if (row.catalogKey === null || row.instanceKey === null) {
@@ -102,7 +121,7 @@ export async function readHouseholdHomeSnapshot(
       usageSchedule: row.usageSchedule,
     }, mapCatalogRow(row as CatalogRow));
   });
-  return { revision, items, history: historyRows };
+  return { household, revision, items, history: historyRows };
 }
 
 export async function resolveHouseholdHomeConflict(
