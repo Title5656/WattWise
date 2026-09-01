@@ -9,7 +9,8 @@ function createStatement(sqlite, sql, values = []) {
       return { results: sqlite.prepare(sql).all(...values) };
     },
     async run() {
-      return sqlite.prepare(sql).run(...values);
+      const result = sqlite.prepare(sql).run(...values);
+      return { meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } };
     },
   };
 }
@@ -23,6 +24,7 @@ export function createAuthDatabase() {
       public_id TEXT NOT NULL UNIQUE,
       email TEXT NOT NULL,
       display_name TEXT,
+      avatar_url TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -38,6 +40,10 @@ export function createAuthDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       public_id TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
+      province TEXT,
+      electricity_provider TEXT,
+      tariff_product_id INTEGER,
+      home_revision INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -50,6 +56,20 @@ export function createAuthDatabase() {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       UNIQUE (household_id, user_id)
+    );
+    CREATE UNIQUE INDEX idx_household_members_one_owner
+      ON household_members (household_id) WHERE role = 'owner';
+    CREATE TABLE household_invites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+      invited_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      email_normalized TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'member', 'viewer')),
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL,
+      accepted_at INTEGER,
+      revoked_at INTEGER,
+      created_at INTEGER NOT NULL
     );
   `);
 
