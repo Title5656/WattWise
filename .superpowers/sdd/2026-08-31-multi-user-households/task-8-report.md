@@ -48,3 +48,19 @@
 - Fresh full verification after all fixes: `npm test` passed 260/260; `npm run typecheck` passed; `npm run lint` exited 0 with the existing `tests/auth-boundary.test.mjs` unused-import warning; `npm run build` exited 0 with the existing Vinext warnings.
 - `npm run cutover:remote -- --help` exits 0 and prints all four supported operator commands.
 - No deployment, merge, or push was performed.
+
+## Fix round 2 — checked-in migration runner
+
+- Commit `044b156 fix: add cutover migration runner` adds the cross-platform `npm run cutover:migrate` operator command. It requires the three Cloudflare environment values, creates a temporary configuration from the built Worker config, binds the target D1 ID, points migrations at the repository `drizzle` directory, and runs baseline reconciliation, migration listing, then remote apply in that order. The temporary configuration is always removed, including after a failed Wrangler command.
+- Added `tests/cutover-migrate.test.mjs` with an injected subprocess runner. The test reads the temporary configuration while it exists, asserts the ordered Wrangler arguments, verifies no API token enters the config, verifies cleanup, and confirms processing stops at the first non-zero exit.
+- Updated `docs/multi-user-cutover.md` with the exact `npm ci`, `npm run build`, and `npm run cutover:migrate` sequence before preview/backfill, while retaining the deploy gate until verification succeeds.
+
+## Fix round 2 — TDD and verification
+
+- RED: `node --experimental-strip-types --test tests/cutover-migrate.test.mjs` failed as expected because `scripts/cutover-migrate.mjs` did not exist.
+- GREEN: `node --experimental-strip-types --test tests/cutover-migrate.test.mjs tests/legacy-cutover-runner.test.mjs tests/deployment-workflow.test.mjs` passed 8/8.
+- `npm run typecheck` exited 0. `npm run lint` exited 0 with the existing unused-import warning in `tests/auth-boundary.test.mjs`. `git diff --check` exited 0. `npm run cutover:migrate -- --help` exited 0 without requiring credentials.
+
+## Fix round 2 — concerns
+
+- The remote migration command was intentionally not executed: it needs production credentials and would mutate the target D1 database. No deployment, merge, or push was performed.
