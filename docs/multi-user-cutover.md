@@ -14,12 +14,21 @@ This runbook moves legacy WattWise data into isolated quarantine households. It 
 
 1. Announce maintenance and prevent Home and bill writes at the edge. Confirm no old application instance can still write the legacy routes.
 2. Export a D1 backup and record the current row counts for `households`, `household_appliances`, `saved_home_appliances`, and `monthly_energy_records`.
-3. Apply all forward migrations through `0010`. Do not delete or rename legacy tables. The normal production deploy job is gated by the repository variable `MULTI_USER_CUTOVER_COMPLETE`; leave it unset or set to `false` during this procedure.
+3. Keep the normal production deploy job gated: leave the repository variable `MULTI_USER_CUTOVER_COMPLETE` unset or set to `false` throughout migration, preview, backfill, and verification. Do not delete or rename legacy tables.
 4. Export `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID`, and a short-lived `CLOUDFLARE_API_TOKEN` with D1 read/write permission in an operator-only terminal. Do not put these values in shell history or CI output.
-5. Run `npm run cutover:remote -- preview`, then `npm run cutover:remote -- backfill`. The checked-in maintenance command uses Cloudflare's authenticated D1 administrative API, prepared statements, and bounded transactional batches. It creates no membership and can be rerun safely while the source remains read-only.
-6. Run `npm run cutover:remote -- verify`. The command exits with status 2 unless `readyForClaims` is `true`. Check source/copied appliance and monthly counts, immutable manifest/source checksums, live target checksums, issue counts, and `PRAGMA foreign_key_check`.
-7. Resolve every blocked source. For `UNKNOWN_CATALOG_KEY`, add or explicitly map the missing catalog model; never discard the source row or immutable issue history. Rerun the backfill and verification.
-8. Only after verification succeeds, set the GitHub repository variable `MULTI_USER_CUTOVER_COMPLETE=true`, dispatch the production workflow, smoke-test the global catalog plus one authenticated household, and then allow writes again.
+5. From the checked-out release revision, install, build, and run the checked-in migration command before any preview or backfill:
+
+   ```sh
+   npm ci
+   npm run build
+   npm run cutover:migrate
+   ```
+
+   This command copies the built `dist/server/wrangler.json` into a temporary configuration, binds it to `CLOUDFLARE_D1_DATABASE_ID`, reconciles the existing baseline history, lists migrations, and applies the repository `drizzle` migrations (including `0010`) remotely. It reads credentials only from the exported environment and removes the temporary configuration when it exits.
+6. Run `npm run cutover:remote -- preview`, then `npm run cutover:remote -- backfill`. The checked-in maintenance command uses Cloudflare's authenticated D1 administrative API, prepared statements, and bounded transactional batches. It creates no membership and can be rerun safely while the source remains read-only.
+7. Run `npm run cutover:remote -- verify`. The command exits with status 2 unless `readyForClaims` is `true`. Check source/copied appliance and monthly counts, immutable manifest/source checksums, live target checksums, issue counts, and `PRAGMA foreign_key_check`.
+8. Resolve every blocked source. For `UNKNOWN_CATALOG_KEY`, add or explicitly map the missing catalog model; never discard the source row or immutable issue history. Rerun the backfill and verification.
+9. Only after verification succeeds, set the GitHub repository variable `MULTI_USER_CUTOVER_COMPLETE=true`, dispatch the production workflow, smoke-test the global catalog plus one authenticated household, and then allow writes again.
 
 If any copy step fails, leave writes disabled, restore the backup to a new D1 database, and investigate there. The migration is forward-only; do not attempt a destructive down migration on the production database.
 
