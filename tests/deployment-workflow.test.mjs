@@ -9,6 +9,8 @@ test('production deployment is main-only, migrates before deploy, and smokes a g
   assert.match(workflow, /d1 migrations apply/);
   assert.match(workflow, /migrations_dir.*drizzle/);
   assert.ok(workflow.indexOf('d1 migrations apply') < workflow.indexOf('wrangler deploy'));
+  assert.match(workflow, /MULTI_USER_CUTOVER_COMPLETE/);
+  assert.match(workflow, /MULTI_USER_CUTOVER_COMPLETE\s*==\s*'true'/);
   assert.match(workflow, /api\/catalog/);
   assert.doesNotMatch(workflow, /api\/home/);
 });

@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "check:icons": "node scripts/check-ui-icons.mjs",
+    "cutover:remote": "node --experimental-strip-types scripts/legacy-cutover.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

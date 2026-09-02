@@ -13,7 +13,11 @@ test('verification reports blockers and detects target changes after a clean bac
   assert.equal(blocked.readyForClaims, false);
   assert.deepEqual(blocked.totals, { sources: 3, verified: 2, blocked: 1, claimed: 0, issues: 1, foreignKeyViolations: 0 });
 
-  sqlite.exec(`DELETE FROM saved_home_appliances WHERE appliance_key = 'missing-catalog-key'`);
+  sqlite.exec(`INSERT INTO appliance_models
+    (id, catalog_key, category_id, brand_id, model_code, display_name, calculation_method,
+     rated_power_w, confidence, is_active, sort_order, created_at, updated_at)
+    SELECT 9999, 'missing-catalog-key', category_id, brand_id, 'RECOVERED', 'Recovered legacy model',
+      'rated_power', 1, 'sample', 0, 9999, 1, 1 FROM appliance_models ORDER BY id LIMIT 1`);
   await cutover.runLegacyCutover(db, { now: 1_800_000_000_100 });
   const clean = await cutover.readLegacyCutoverVerification(db);
   assert.equal(clean.readyForClaims, true);

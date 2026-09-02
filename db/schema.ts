@@ -241,8 +241,14 @@ export const legacyCutoverSources = sqliteTable('legacy_cutover_sources', {
   sourceMonthlyCount: integer('source_monthly_count').notNull().default(0),
   copiedMonthlyCount: integer('copied_monthly_count').notNull().default(0),
   sourceChecksum: text('source_checksum'),
+  manifestRowCount: integer('manifest_row_count'),
+  manifestChecksum: text('manifest_checksum'),
+  verificationChecksum: text('verification_checksum'),
   targetChecksum: text('target_checksum'),
   issueCount: integer('issue_count').notNull().default(0),
+  sourceDrift: integer('source_drift', { mode: 'boolean' }).notNull().default(false),
+  verificationEpoch: integer('verification_epoch').notNull().default(0),
+  sealedAt: integer('sealed_at'),
   verifiedAt: integer('verified_at'),
   claimedAt: integer('claimed_at'),
   createdAt: integer('created_at').notNull(),
@@ -253,6 +259,21 @@ export const legacyCutoverSources = sqliteTable('legacy_cutover_sources', {
   index('idx_legacy_cutover_sources_status').on(table.verificationStatus),
   check('legacy_cutover_sources_kind_check', sql`${table.sourceKind} IN ('relational', 'saved-home')`),
   check('legacy_cutover_sources_status_check', sql`${table.verificationStatus} IN ('pending', 'verified', 'blocked', 'claimed')`),
+]);
+
+export const legacyCutoverManifestRows = sqliteTable('legacy_cutover_manifest_rows', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceId: integer('source_id').notNull().references(() => legacyCutoverSources.id, { onDelete: 'restrict' }),
+  itemKind: text('item_kind', { enum: ['config', 'appliance', 'monthly'] }).notNull(),
+  sourceTable: text('source_table').notNull(),
+  sourceRowId: text('source_row_id').notNull(),
+  payload: text('payload').notNull(),
+  payloadChecksum: text('payload_checksum').notNull(),
+  capturedAt: integer('captured_at').notNull(),
+}, (table) => [
+  uniqueIndex('idx_legacy_cutover_manifest_source_row').on(table.sourceId, table.itemKind, table.sourceTable, table.sourceRowId),
+  index('idx_legacy_cutover_manifest_source').on(table.sourceId, table.itemKind),
+  check('legacy_cutover_manifest_kind_check', sql`${table.itemKind} IN ('config', 'appliance', 'monthly')`),
 ]);
 
 export const legacyCutoverIssues = sqliteTable('legacy_cutover_issues', {
@@ -267,10 +288,31 @@ export const legacyCutoverIssues = sqliteTable('legacy_cutover_issues', {
   index('idx_legacy_cutover_issues_source').on(table.sourceId, table.code),
 ]);
 
+export const legacyCutoverIssueEvents = sqliteTable('legacy_cutover_issue_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceId: integer('source_id').notNull().references(() => legacyCutoverSources.id, { onDelete: 'restrict' }),
+  code: text('code').notNull(),
+  sourceTable: text('source_table').notNull(),
+  sourceRowId: text('source_row_id'),
+  details: text('details').notNull(),
+  observedAt: integer('observed_at').notNull(),
+}, (table) => [
+  uniqueIndex('idx_legacy_cutover_issue_events_identity').on(
+    table.sourceId,
+    table.code,
+    table.sourceTable,
+    table.sourceRowId,
+    table.details,
+  ),
+  index('idx_legacy_cutover_issue_events_source').on(table.sourceId, table.observedAt),
+]);
+
 export const householdClaimTokens = sqliteTable('household_claim_tokens', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   sourceId: integer('source_id').notNull().references(() => legacyCutoverSources.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull(),
+  verificationEpoch: integer('verification_epoch'),
+  targetChecksum: text('target_checksum'),
   expiresAt: integer('expires_at').notNull(),
   claimedByUserId: integer('claimed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
   consumedAt: integer('consumed_at'),

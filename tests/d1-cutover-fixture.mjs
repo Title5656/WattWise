@@ -72,6 +72,11 @@ export async function createCutoverDatabase() {
     const migration = await readFile(new URL(`../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8');
     executeMigration(sqlite, migration);
   }
+  sqlite.exec(`
+    INSERT INTO tariff_products (id, product_key, name, provider, created_at, updated_at)
+      VALUES (601, 'legacy-residential', 'Legacy residential', 'PEA', 1, 1);
+    UPDATE households SET electricity_provider = 'PEA', tariff_product_id = 601 WHERE id = 701;
+  `);
 
   const batchCalls = [];
   const db = {
