@@ -64,6 +64,13 @@
       "when": 1788177036722,
       "tag": "0008_third_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788325222558,
+      "tag": "0009_lying_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

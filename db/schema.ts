@@ -227,3 +227,56 @@ export const monthlyEnergyRecords = sqliteTable('household_monthly_energy_record
 }, (table) => [
   uniqueIndex('idx_household_monthly_energy_records_household_month').on(table.householdId, table.billingMonth),
 ]);
+
+export const legacyCutoverSources = sqliteTable('legacy_cutover_sources', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceKind: text('source_kind', { enum: ['relational', 'saved-home'] }).notNull(),
+  sourceKey: text('source_key').notNull(),
+  householdId: integer('household_id').notNull().references(() => households.id, { onDelete: 'restrict' }),
+  verificationStatus: text('verification_status', {
+    enum: ['pending', 'verified', 'blocked', 'claimed'],
+  }).notNull().default('pending'),
+  sourceApplianceCount: integer('source_appliance_count').notNull().default(0),
+  copiedApplianceCount: integer('copied_appliance_count').notNull().default(0),
+  sourceMonthlyCount: integer('source_monthly_count').notNull().default(0),
+  copiedMonthlyCount: integer('copied_monthly_count').notNull().default(0),
+  sourceChecksum: text('source_checksum'),
+  targetChecksum: text('target_checksum'),
+  issueCount: integer('issue_count').notNull().default(0),
+  verifiedAt: integer('verified_at'),
+  claimedAt: integer('claimed_at'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+}, (table) => [
+  uniqueIndex('idx_legacy_cutover_sources_kind_key').on(table.sourceKind, table.sourceKey),
+  uniqueIndex('idx_legacy_cutover_sources_household').on(table.householdId),
+  index('idx_legacy_cutover_sources_status').on(table.verificationStatus),
+  check('legacy_cutover_sources_kind_check', sql`${table.sourceKind} IN ('relational', 'saved-home')`),
+  check('legacy_cutover_sources_status_check', sql`${table.verificationStatus} IN ('pending', 'verified', 'blocked', 'claimed')`),
+]);
+
+export const legacyCutoverIssues = sqliteTable('legacy_cutover_issues', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceId: integer('source_id').notNull().references(() => legacyCutoverSources.id, { onDelete: 'cascade' }),
+  code: text('code').notNull(),
+  sourceTable: text('source_table').notNull(),
+  sourceRowId: text('source_row_id'),
+  details: text('details').notNull(),
+  createdAt: integer('created_at').notNull(),
+}, (table) => [
+  index('idx_legacy_cutover_issues_source').on(table.sourceId, table.code),
+]);
+
+export const householdClaimTokens = sqliteTable('household_claim_tokens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  sourceId: integer('source_id').notNull().references(() => legacyCutoverSources.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  claimedByUserId: integer('claimed_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  consumedAt: integer('consumed_at'),
+  createdAt: integer('created_at').notNull(),
+}, (table) => [
+  uniqueIndex('idx_household_claim_tokens_source').on(table.sourceId),
+  uniqueIndex('idx_household_claim_tokens_hash').on(table.tokenHash),
+  index('idx_household_claim_tokens_expiry').on(table.expiresAt),
+]);
