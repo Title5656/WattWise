@@ -9,10 +9,9 @@ const NOW = 2_000_000_000_000;
 
 function identity(subject, email, displayName = email) {
   return {
-    'oai-authenticated-user-id': subject,
-    'oai-authenticated-user-email': email,
-    'oai-authenticated-user-full-name': encodeURIComponent(displayName),
-    'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+    'x-wattwise-auth-subject': subject,
+    'x-wattwise-auth-email': email,
+    'x-wattwise-auth-name': displayName,
   };
 }
 
@@ -45,9 +44,9 @@ function setup() {
       (5, 'usr_viewer', 'viewer@example.com', 'Viewer', NULL, 1, 1),
       (6, 'usr_invitee', 'invitee@example.com', 'Invitee', NULL, 1, 1);
     INSERT INTO user_identities (user_id, provider, subject, created_at) VALUES
-      (1, 'openai-sites', 'sub-a', 1), (2, 'openai-sites', 'sub-b', 1),
-      (3, 'openai-sites', 'sub-admin', 1), (4, 'openai-sites', 'sub-member', 1),
-      (5, 'openai-sites', 'sub-viewer', 1), (6, 'openai-sites', 'sub-invitee', 1);
+      (1, 'cloudflare-access', 'sub-a', 1), (2, 'cloudflare-access', 'sub-b', 1),
+      (3, 'cloudflare-access', 'sub-admin', 1), (4, 'cloudflare-access', 'sub-member', 1),
+      (5, 'cloudflare-access', 'sub-viewer', 1), (6, 'cloudflare-access', 'sub-invitee', 1);
     INSERT INTO households (id, public_id, name, province, electricity_provider, status, created_at, updated_at) VALUES
       (10, 'hh_a', 'Home A', 'Bangkok', 'MEA', 'active', 1, 1),
       (20, 'hh_b', 'Home B', 'Chiang Mai', 'PEA', 'active', 1, 1),

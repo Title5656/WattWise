@@ -16,64 +16,55 @@ import {
 } from '../lib/server/household-access.ts';
 import { createAuthDatabase } from './d1-auth-fixture.mjs';
 
-test('parses only complete verified Sites identity headers', () => {
+test('parses only complete internal Cloudflare Access identity headers', () => {
   assert.equal(getCurrentIdentity(new Request('https://wattwise.test')), null);
   assert.equal(getCurrentIdentity(new Request('https://wattwise.test', {
-    headers: { 'oai-authenticated-user-id': 'subject-1' },
+    headers: { 'x-wattwise-auth-subject': 'subject-1' },
   })), null);
 
   assert.deepEqual(getCurrentIdentity(new Request('https://wattwise.test', {
     headers: {
-      'oai-authenticated-user-id': '  subject-1  ',
-      'oai-authenticated-user-email': '  ALICE@EXAMPLE.COM  ',
+      'x-wattwise-auth-subject': '  subject-1  ',
+      'x-wattwise-auth-email': '  ALICE@EXAMPLE.COM  ',
+      'x-wattwise-auth-name': '  Alice Example  ',
     },
   })), {
-    provider: 'openai-sites',
+    provider: 'cloudflare-access',
     subject: 'subject-1',
     email: 'alice@example.com',
-    displayName: 'alice@example.com',
+    displayName: 'Alice Example',
   });
 });
 
-test('decodes only correctly-marked UTF-8 full names and tolerates malformed values', () => {
+test('uses the verified email when the internal display name is blank', () => {
   const baseHeaders = {
-    'oai-authenticated-user-id': 'subject-1',
-    'oai-authenticated-user-email': 'alice@example.com',
+    'x-wattwise-auth-subject': 'subject-1',
+    'x-wattwise-auth-email': 'alice@example.com',
   };
-  const decoded = getCurrentIdentity(new Request('https://wattwise.test', {
+  const named = getCurrentIdentity(new Request('https://wattwise.test', {
     headers: {
       ...baseHeaders,
-      'oai-authenticated-user-full-name': 'Alice%20%E0%B8%AA%E0%B8%A1%E0%B8%8A%E0%B8%B2%E0%B8%A2',
-      'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+      'x-wattwise-auth-name': 'Alice Example',
     },
   }));
-  const malformed = getCurrentIdentity(new Request('https://wattwise.test', {
+  const blank = getCurrentIdentity(new Request('https://wattwise.test', {
     headers: {
       ...baseHeaders,
-      'oai-authenticated-user-full-name': '%E0%A4',
-      'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
-    },
-  }));
-  const unmarked = getCurrentIdentity(new Request('https://wattwise.test', {
-    headers: {
-      ...baseHeaders,
-      'oai-authenticated-user-full-name': 'Untrusted%20Name',
+      'x-wattwise-auth-name': '   ',
     },
   }));
 
-  assert.equal(decoded?.displayName, 'Alice สมชาย');
-  assert.equal(malformed?.displayName, 'alice@example.com');
-  assert.equal(unmarked?.displayName, 'alice@example.com');
+  assert.equal(named?.displayName, 'Alice Example');
+  assert.equal(blank?.displayName, 'alice@example.com');
 });
 
 test('provisions and reuses one application user for a verified identity', async () => {
   const { db, sqlite } = createAuthDatabase();
   const request = new Request('https://wattwise.test', {
     headers: {
-      'oai-authenticated-user-id': 'provider-subject-1',
-      'oai-authenticated-user-email': 'ALICE@EXAMPLE.COM',
-      'oai-authenticated-user-full-name': 'Alice%20Example',
-      'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8',
+      'x-wattwise-auth-subject': 'provider-subject-1',
+      'x-wattwise-auth-email': 'ALICE@EXAMPLE.COM',
+      'x-wattwise-auth-name': 'Alice Example',
     },
   });
 
@@ -85,7 +76,7 @@ test('provisions and reuses one application user for a verified identity', async
   const second = await getUser(db, request);
 
   assert.deepEqual(second, first);
-  assert.equal(first?.provider, 'openai-sites');
+  assert.equal(first?.provider, 'cloudflare-access');
   assert.equal(first?.subject, 'provider-subject-1');
   assert.equal(first?.email, 'alice@example.com');
   assert.equal(first?.displayName, 'Alice Example');
@@ -106,7 +97,7 @@ test('reuses a racing identity without leaving a provisional user behind', async
           INSERT INTO users (public_id, email, display_name, created_at, updated_at)
             VALUES ('usr_competitor', 'alice@example.com', 'Alice Example', 1, 1);
           INSERT INTO user_identities (user_id, provider, subject, created_at)
-            VALUES (1, 'openai-sites', 'race-subject', 1);
+            VALUES (1, 'cloudflare-access', 'race-subject', 1);
         `);
       }
       return db.batch(statements);
@@ -119,8 +110,8 @@ test('reuses a racing identity without leaving a provisional user behind', async
 
   const user = await getUser(racingDb, new Request('https://wattwise.test', {
     headers: {
-      'oai-authenticated-user-id': 'race-subject',
-      'oai-authenticated-user-email': 'alice@example.com',
+      'x-wattwise-auth-subject': 'race-subject',
+      'x-wattwise-auth-email': 'alice@example.com',
     },
   }));
 

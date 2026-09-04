@@ -1,17 +1,16 @@
-export type SitesIdentity = {
-  provider: 'openai-sites';
+export type CloudflareAccessIdentity = {
+  provider: 'cloudflare-access';
   subject: string;
   email: string;
   displayName: string;
 };
 
-const PROVIDER = 'openai-sites' as const;
-const SUBJECT_HEADER = 'oai-authenticated-user-id';
-const EMAIL_HEADER = 'oai-authenticated-user-email';
-const FULL_NAME_HEADER = 'oai-authenticated-user-full-name';
-const FULL_NAME_ENCODING_HEADER = 'oai-authenticated-user-full-name-encoding';
+const PROVIDER = 'cloudflare-access' as const;
+const SUBJECT_HEADER = 'x-wattwise-auth-subject';
+const EMAIL_HEADER = 'x-wattwise-auth-email';
+const NAME_HEADER = 'x-wattwise-auth-name';
 
-export function getCurrentIdentity(request: Request): SitesIdentity | null {
+export function getCurrentIdentity(request: Request): CloudflareAccessIdentity | null {
   const subject = request.headers.get(SUBJECT_HEADER)?.trim();
   const email = request.headers.get(EMAIL_HEADER)?.trim().toLowerCase();
 
@@ -21,19 +20,6 @@ export function getCurrentIdentity(request: Request): SitesIdentity | null {
     provider: PROVIDER,
     subject,
     email,
-    displayName: decodeDisplayName(request) ?? email,
+    displayName: request.headers.get(NAME_HEADER)?.trim() || email,
   };
-}
-
-function decodeDisplayName(request: Request): string | null {
-  if (request.headers.get(FULL_NAME_ENCODING_HEADER) !== 'percent-encoded-utf-8') return null;
-
-  const encodedName = request.headers.get(FULL_NAME_HEADER);
-  if (!encodedName) return null;
-
-  try {
-    return decodeURIComponent(encodedName).trim() || null;
-  } catch {
-    return null;
-  }
 }

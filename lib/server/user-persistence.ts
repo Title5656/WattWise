@@ -1,5 +1,5 @@
 import type { AuthenticatedUser } from './current-user.ts';
-import type { SitesIdentity } from './sites-identity.ts';
+import type { CloudflareAccessIdentity } from './sites-identity.ts';
 
 type UserRow = {
   userId: number;
@@ -17,7 +17,7 @@ export function createUserProvisioner(options: UserProvisionerOptions = {}) {
   const createPublicId = options.createPublicId ?? defaultPublicId;
   const now = options.now ?? Date.now;
 
-  return async function findOrCreateUser(db: D1Database, identity: SitesIdentity): Promise<AuthenticatedUser> {
+  return async function findOrCreateUser(db: D1Database, identity: CloudflareAccessIdentity): Promise<AuthenticatedUser> {
     let user = await findUserByIdentity(db, identity);
     if (!user) {
       const timestamp = now();

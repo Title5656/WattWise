@@ -5,7 +5,7 @@ import { createUserProvisioner, type UserProvisionerOptions } from './user-persi
 export type AuthenticatedUser = {
   userId: number;
   publicId: string;
-  provider: 'openai-sites';
+  provider: 'cloudflare-access';
   subject: string;
   email: string;
   displayName: string;

@@ -7,8 +7,8 @@ import { createCutoverDatabase } from './d1-cutover-fixture.mjs';
 
 function identity(subject, email) {
   return {
-    'oai-authenticated-user-id': subject,
-    'oai-authenticated-user-email': email,
+    'x-wattwise-auth-subject': subject,
+    'x-wattwise-auth-email': email,
   };
 }
 
@@ -35,7 +35,7 @@ test('claim API authenticates first, ignores client identity, and does not discl
       (41, 'usr_claimant', 'claimant@example.com', 1, 1),
       (42, 'usr_body', 'body@example.com', 1, 1);
     INSERT INTO user_identities (user_id, provider, subject, created_at)
-      VALUES (41, 'openai-sites', 'claim-subject', 1);
+      VALUES (41, 'cloudflare-access', 'claim-subject', 1);
   `);
   const api = createLegacyClaimApi(() => db, { now: () => 1_800_000_000_020 });
 

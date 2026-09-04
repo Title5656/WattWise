@@ -18,9 +18,9 @@ function request(path, { method = 'GET', user = identities.owner, json } = {}) {
   return new Request(`https://wattwise.test${path}`, {
     method,
     headers: {
-      'oai-authenticated-user-id': user.subject,
-      'oai-authenticated-user-email': user.email,
-      'oai-authenticated-user-name': user.name,
+      'x-wattwise-auth-subject': user.subject,
+      'x-wattwise-auth-email': user.email,
+      'x-wattwise-auth-name': user.name,
       ...(json === undefined ? {} : { 'content-type': 'application/json' }),
     },
     body: json === undefined ? undefined : JSON.stringify(json),
@@ -37,10 +37,10 @@ function setup() {
       (3, 'usr_viewer', 'viewer@example.com', 'Viewer', ${NOW}, ${NOW}),
       (4, 'usr_outsider', 'outsider@example.com', 'Outsider', ${NOW}, ${NOW});
     INSERT INTO user_identities (user_id, provider, subject, created_at) VALUES
-      (1, 'openai-sites', 'owner-sub', ${NOW}),
-      (2, 'openai-sites', 'member-sub', ${NOW}),
-      (3, 'openai-sites', 'viewer-sub', ${NOW}),
-      (4, 'openai-sites', 'outsider-sub', ${NOW});
+      (1, 'cloudflare-access', 'owner-sub', ${NOW}),
+      (2, 'cloudflare-access', 'member-sub', ${NOW}),
+      (3, 'cloudflare-access', 'viewer-sub', ${NOW}),
+      (4, 'cloudflare-access', 'outsider-sub', ${NOW});
     INSERT INTO households (id, public_id, name, home_revision, status, created_at, updated_at) VALUES
       (10, 'hh_alpha', 'Alpha', 0, 'active', ${NOW}, ${NOW}),
       (20, 'hh_beta', 'Beta', 4, 'active', ${NOW}, ${NOW});
@@ -178,8 +178,8 @@ test('PUT enforces the household authorization boundary before parsing malformed
   const malformed = (user) => new Request('https://wattwise.test/api/households/hh_alpha/home', {
     method: 'PUT',
     headers: {
-      'oai-authenticated-user-id': user.subject,
-      'oai-authenticated-user-email': user.email,
+      'x-wattwise-auth-subject': user.subject,
+      'x-wattwise-auth-email': user.email,
       'content-type': 'application/json',
     },
     body: '{',

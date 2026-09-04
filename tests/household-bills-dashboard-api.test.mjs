@@ -20,9 +20,9 @@ function request(path, { method = 'GET', user = identities.owner, json, raw } = 
   return new Request(`https://wattwise.test${path}`, {
     method,
     headers: {
-      'oai-authenticated-user-id': user.subject,
-      'oai-authenticated-user-email': user.email,
-      'oai-authenticated-user-name': user.name,
+      'x-wattwise-auth-subject': user.subject,
+      'x-wattwise-auth-email': user.email,
+      'x-wattwise-auth-name': user.name,
       ...((json !== undefined || raw !== undefined) ? { 'content-type': 'application/json' } : {}),
     },
     body: raw ?? (json === undefined ? undefined : JSON.stringify(json)),
@@ -40,11 +40,11 @@ function setup() {
       (4, 'usr_viewer', 'viewer@example.com', 'Viewer', ${NOW}, ${NOW}),
       (5, 'usr_outsider', 'outsider@example.com', 'Outsider', ${NOW}, ${NOW});
     INSERT INTO user_identities (user_id, provider, subject, created_at) VALUES
-      (1, 'openai-sites', 'owner-sub', ${NOW}),
-      (2, 'openai-sites', 'admin-sub', ${NOW}),
-      (3, 'openai-sites', 'member-sub', ${NOW}),
-      (4, 'openai-sites', 'viewer-sub', ${NOW}),
-      (5, 'openai-sites', 'outsider-sub', ${NOW});
+      (1, 'cloudflare-access', 'owner-sub', ${NOW}),
+      (2, 'cloudflare-access', 'admin-sub', ${NOW}),
+      (3, 'cloudflare-access', 'member-sub', ${NOW}),
+      (4, 'cloudflare-access', 'viewer-sub', ${NOW}),
+      (5, 'cloudflare-access', 'outsider-sub', ${NOW});
     INSERT INTO households
       (id, public_id, name, province, electricity_provider, home_revision, status, created_at, updated_at)
     VALUES
