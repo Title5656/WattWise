@@ -12,6 +12,7 @@ const baselinePath = path.join(repositoryPath, 'scripts', 'd1-baseline.sql');
 const USAGE = 'Usage: npm run cutover:migrate';
 
 export async function runCutoverMigrations({
+  buildConfigPath = distConfigPath,
   environment = process.env,
   runCommand = runWrangler,
 } = {}) {
@@ -26,7 +27,7 @@ export async function runCutoverMigrations({
   const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'wattwise-cutover-'));
   const configPath = path.join(temporaryDirectory, 'wrangler.json');
   try {
-    const config = JSON.parse(await readFile(distConfigPath, 'utf8'));
+    const config = JSON.parse(await readFile(buildConfigPath, 'utf8'));
     const database = config.d1_databases?.find(({ binding }) => binding === 'DB');
     if (!database) throw new Error('Production build configuration does not define the DB D1 binding. Run npm run build first.');
     database.database_id = environment.CLOUDFLARE_D1_DATABASE_ID;
