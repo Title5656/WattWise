@@ -2,22 +2,23 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const read = () => readFile(new URL('../app/my-home/page.tsx', import.meta.url), 'utf8');
+const read = () => readFile(new URL('../app/components/HouseholdMyHome.tsx', import.meta.url), 'utf8');
 
-test('My Home synchronizes pending storage before scheduling a save', async () => {
+test('My Home delegates durable scoped drafts and save scheduling to the Task 6 controller', async () => {
   const source = await read();
 
-  assert.match(source, /syncPendingHomeSave/);
-  assert.match(source, /ownedPendingBody/);
-  assert.doesNotMatch(source, /stagePendingHomeSave\(storage, body\)/);
+  assert.match(source, /createScopedHomeAutosaveController/);
+  assert.match(source, /controller\.activate\(\{ userId: autosaveUserId, householdId \}\)/);
+  assert.match(source, /controller\.dispose\(\)/);
+  assert.doesNotMatch(source, /syncPendingHomeSave|readPendingHomeSave|\/api\/home/);
 });
 
 test('server and pending loads preserve separate saved appliance instances', async () => {
   const source = await read();
 
   assert.doesNotMatch(source, /mergeHomeItems/);
-  assert.match(source, /setHomeItems\(pending\.items\)/);
-  assert.match(source, /setHomeItems\(data\.items\)/);
+  assert.match(source, /const homeItems = autosaveState\.items/);
+  assert.match(source, /controller\.subscribe\(setAutosaveState\)/);
 });
 
 test('quantity UI caps and snaps typed values to the 1 through 99 save contract', async () => {

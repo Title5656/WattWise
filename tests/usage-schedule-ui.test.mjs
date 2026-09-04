@@ -5,7 +5,7 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
 test('My Home uses button-based usage periods without drag and drop handlers', async () => {
-  const source = await read('../app/my-home/page.tsx');
+  const source = await read('../app/components/HouseholdMyHome.tsx');
 
   assert.doesNotMatch(source, /draggable|onDragStart|onDragOver|onDrop|dataTransfer/);
   assert.match(source, /aria-pressed=\{selected\}/);
@@ -14,7 +14,7 @@ test('My Home uses button-based usage periods without drag and drop handlers', a
 });
 
 test('dashboard graph is based on the home daily load profile', async () => {
-  const source = await read('../app/page.tsx');
+  const source = await read('../app/components/HouseholdDashboard.tsx');
 
   assert.match(source, /calculateDailyLoadProfile/);
   assert.doesNotMatch(source, /const chartData/);

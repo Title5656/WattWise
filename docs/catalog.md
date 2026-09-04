@@ -49,4 +49,4 @@ Do not run a scraper or rerun a past import to update the catalog. A refresh req
 
 ## Deployment privacy warning
 
-Authentication is not implemented. Production currently uses one shared, unauthenticated `default-home`; `/api/home` accepts home mutations and `/api/bills` accepts bill mutations for that shared data. Treat every deployment as private/access-controlled until authentication and per-user ownership are implemented. Do not expose it as a public multi-user service in the meantime.
+`GET /api/catalog` is intentionally global and read-only. Home configuration, bills, dashboard data, and membership operations use authenticated `/api/households/:householdId/*` routes; the server derives identity from verified Sites headers and checks household membership before accessing household-owned data.

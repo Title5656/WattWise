@@ -1,16 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const statusPage = readFileSync(new URL('../app/page.tsx', import.meta.url), 'utf8');
-const sidebar = readFileSync(new URL('../app/components/WattWiseSidebar.tsx', import.meta.url), 'utf8');
+const householdUi = await import('../lib/household-ui.ts').catch(() => null);
 
-test('status and account copy uses the current user name', () => {
-  const combinedCopy = `${statusPage}\n${sidebar}`;
+test('status and account copy derives from the current identity and membership', () => {
+  assert.ok(householdUi, 'household UI behavior helpers must exist');
 
-  assert.match(combinedCopy, /สวัสดีคุณวิทวัส/);
-  assert.match(combinedCopy, /บ้านวิทวัส/);
-  assert.match(combinedCopy, /สถานะบ้าน/);
-  assert.doesNotMatch(sidebar, />วิทวัส</);
-  assert.doesNotMatch(combinedCopy, /วรปรัชญ์/);
+  assert.equal(householdUi.displayUserName({ id: 'u1', email: 'person@example.com', displayName: 'ปาริชาติ' }), 'ปาริชาติ');
+  assert.equal(householdUi.householdRoleLabel('member'), 'สมาชิกบ้าน');
 });

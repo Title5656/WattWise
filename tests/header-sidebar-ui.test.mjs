@@ -22,17 +22,18 @@ test('header profile and notification controls share the same 44px height', asyn
 
 test('sidebar footer is a useful My Home status link', async () => {
   const [dashboard, myHome, sidebar] = await Promise.all([
-    readProjectFile('app/page.tsx'),
-    readProjectFile('app/my-home/page.tsx'),
+    readProjectFile('app/components/HouseholdDashboard.tsx'),
+    readProjectFile('app/components/HouseholdMyHome.tsx'),
     readProjectFile('app/components/WattWiseSidebar.tsx'),
   ]);
 
-  assert.match(sidebar, /homeItemCount\?: number/);
+  assert.match(sidebar, /householdId: string; homeItemCount\?: number/);
   assert.match(sidebar, /className="sidebar-account"/);
-  assert.match(sidebar, /href="\/my-home"/);
+  assert.match(sidebar, /href=\{myHomePath\}/);
+  assert.match(sidebar, /householdMyHomePath\(householdId\)/);
   assert.match(sidebar, /aria-label="ไปจัดการอุปกรณ์ใน My Home"/);
   assert.match(sidebar, /อุปกรณ์ · ออนไลน์/);
   assert.doesNotMatch(sidebar, /เปิดโปรไฟล์|<i>WP<\/i>/);
-  assert.match(dashboard, /homeItemCount=\{homeLoading \? undefined : homeItems\.length\}/);
-  assert.match(myHome, /homeItemCount=\{saveState === 'loading' \? undefined : homeItems\.length\}/);
+  assert.match(dashboard, /householdId=\{householdId\} homeItemCount=\{homeLoading \? undefined : homeItems\.length\}/);
+  assert.match(myHome, /householdId=\{householdId\} homeItemCount=\{autosaveState\.phase === 'loading' \? undefined : homeItems\.length\}/);
 });

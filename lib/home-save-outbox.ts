@@ -3,9 +3,22 @@ import { USAGE_PERIODS } from './usage-schedule.ts';
 
 export const HOME_SAVE_OUTBOX_KEY = 'wattwise.home-save-outbox.v2';
 export const LEGACY_HOME_SAVE_OUTBOX_KEY = 'wattwise.home-save-outbox.v1';
+export const SCOPED_HOME_SAVE_OUTBOX_PREFIX = 'wattwise.home-save-outbox.v3';
+export const SCOPED_HOME_SAVE_LOCK_PREFIX = 'wattwise.home-save-lock.v3';
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 type Envelope = { version: 2; body: string };
+
+export type HomeSaveScope = { userId: string; householdId: string };
+
+export type ScopedHomeSaveEnvelope = {
+  version: 3;
+  userId: string;
+  householdId: string;
+  expectedRevision: number;
+  body: string;
+  updatedAt: number;
+};
 
 const riceCookerSchedule = {
   kind: 'hours' as const,
@@ -106,6 +119,166 @@ export function canonicalizePendingHomeSave(body: string): string | null {
   } catch {
     return null;
   }
+}
+
+function canonicalizeScopedBody(body: string): string | null {
+  try {
+    if (!validateBody(body)) return null;
+    const parsed = JSON.parse(body) as { items: Record<string, unknown>[] };
+    const instanceIds = new Set<string>();
+    for (const item of parsed.items) {
+      if (typeof item.id !== 'string' || item.id.trim().length === 0 || item.id.length > 200
+        || typeof item.instanceId !== 'string' || item.instanceId.trim().length === 0 || item.instanceId.length > 200
+        || instanceIds.has(item.instanceId)
+        || (item.hoursPerDay !== undefined && item.hoursPerDay !== null
+          && (!finiteNumber(item.hoursPerDay) || item.hoursPerDay < 0 || item.hoursPerDay > 24))
+        || (item.cyclesPerMonth !== undefined && item.cyclesPerMonth !== null
+          && (!finiteNumber(item.cyclesPerMonth) || item.cyclesPerMonth < 0))) return null;
+      instanceIds.add(item.instanceId);
+      const schedule = item.usageSchedule as { kind?: unknown; hoursByPeriod?: Record<string, unknown> } | undefined;
+      if (schedule?.kind === 'hours'
+        && USAGE_PERIODS.some((period) => !finiteNumber(schedule.hoursByPeriod?.[period])
+          || (schedule.hoursByPeriod?.[period] as number) < 0
+          || (schedule.hoursByPeriod?.[period] as number) > 6)) return null;
+    }
+    return JSON.stringify({ items: parsed.items });
+  } catch {
+    return null;
+  }
+}
+
+function encodedScope(scope: HomeSaveScope): string {
+  return `${encodeURIComponent(scope.userId)}:${encodeURIComponent(scope.householdId)}`;
+}
+
+export function homeSaveOutboxKey(scope: HomeSaveScope): string {
+  return `${SCOPED_HOME_SAVE_OUTBOX_PREFIX}:${encodedScope(scope)}`;
+}
+
+export function homeSaveLockName(scope: HomeSaveScope): string {
+  return `${SCOPED_HOME_SAVE_LOCK_PREFIX}:${encodedScope(scope)}`;
+}
+
+function parseScopedEnvelope(raw: string, scope: HomeSaveScope): ScopedHomeSaveEnvelope | null {
+  try {
+    const candidate = JSON.parse(raw) as Partial<ScopedHomeSaveEnvelope>;
+    if (candidate.version !== 3
+      || candidate.userId !== scope.userId
+      || candidate.householdId !== scope.householdId
+      || !Number.isSafeInteger(candidate.expectedRevision)
+      || (candidate.expectedRevision as number) < 0
+      || !Number.isSafeInteger(candidate.updatedAt)
+      || (candidate.updatedAt as number) < 0
+      || typeof candidate.body !== 'string') return null;
+    const body = canonicalizeScopedBody(candidate.body);
+    if (!body) return null;
+    return {
+      version: 3,
+      userId: scope.userId,
+      householdId: scope.householdId,
+      expectedRevision: candidate.expectedRevision as number,
+      body,
+      updatedAt: candidate.updatedAt as number,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sameScopedEnvelope(left: ScopedHomeSaveEnvelope, right: ScopedHomeSaveEnvelope): boolean {
+  return left.version === right.version
+    && left.userId === right.userId
+    && left.householdId === right.householdId
+    && left.expectedRevision === right.expectedRevision
+    && left.body === right.body
+    && left.updatedAt === right.updatedAt;
+}
+
+export function stageScopedPendingHomeSave(
+  storage: StorageLike,
+  scope: HomeSaveScope,
+  expectedRevision: number,
+  body: string,
+  updatedAt = Date.now(),
+): ScopedHomeSaveEnvelope | null {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0
+    || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return null;
+  const canonicalBody = canonicalizeScopedBody(body);
+  if (!canonicalBody) return null;
+  const envelope: ScopedHomeSaveEnvelope = {
+    version: 3,
+    userId: scope.userId,
+    householdId: scope.householdId,
+    expectedRevision,
+    body: canonicalBody,
+    updatedAt,
+  };
+  try {
+    storage.setItem(homeSaveOutboxKey(scope), JSON.stringify(envelope));
+  } catch {
+    // Keep the in-memory envelope usable when durable storage is unavailable.
+  }
+  return envelope;
+}
+
+export function readScopedPendingHomeSave(
+  storage: StorageLike,
+  scope: HomeSaveScope,
+): ScopedHomeSaveEnvelope | null {
+  const key = homeSaveOutboxKey(scope);
+  try {
+    const raw = storage.getItem(key);
+    if (raw === null) return null;
+    const envelope = parseScopedEnvelope(raw, scope);
+    if (envelope) return envelope;
+    storage.removeItem(key);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearScopedPendingHomeSave(
+  storage: StorageLike,
+  scope: HomeSaveScope,
+  expected: ScopedHomeSaveEnvelope | null,
+): boolean {
+  if (!expected) return false;
+  const key = homeSaveOutboxKey(scope);
+  try {
+    const current = parseScopedEnvelope(storage.getItem(key) ?? '', scope);
+    if (!current || !sameScopedEnvelope(current, expected)) return false;
+    storage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function rebaseScopedPendingHomeSave(
+  storage: StorageLike,
+  scope: HomeSaveScope,
+  expected: ScopedHomeSaveEnvelope,
+  expectedRevision: number,
+  updatedAt = Date.now(),
+): ScopedHomeSaveEnvelope | null {
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0
+    || !Number.isSafeInteger(updatedAt) || updatedAt < 0) return null;
+  const key = homeSaveOutboxKey(scope);
+  try {
+    const current = parseScopedEnvelope(storage.getItem(key) ?? '', scope);
+    if (!current || !sameScopedEnvelope(current, expected)) return null;
+    const rebased = { ...current, expectedRevision, updatedAt };
+    storage.setItem(key, JSON.stringify(rebased));
+    return rebased;
+  } catch {
+    return null;
+  }
+}
+
+export function scopedPendingHomeSaveRequestBody(envelope: ScopedHomeSaveEnvelope): string {
+  const parsed = JSON.parse(envelope.body) as { items: unknown[] };
+  return JSON.stringify({ expectedRevision: envelope.expectedRevision, items: parsed.items });
 }
 
 function parseEnvelope(raw: string): Envelope | null {

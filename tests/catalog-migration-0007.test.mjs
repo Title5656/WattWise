@@ -83,7 +83,10 @@ async function createUpgradeFixture() {
 
 test('0007 is journaled after the seed and replays without changing repaired rows', async () => {
   const journal = JSON.parse(await readFile(new URL('../drizzle/meta/_journal.json', import.meta.url), 'utf8'));
-  assert.deepEqual(journal.entries.map(({ idx, tag }) => ({ idx, tag })), migrationTags.map((tag, idx) => ({ idx, tag })));
+  assert.deepEqual(
+    journal.entries.slice(0, migrationTags.length).map(({ idx, tag }) => ({ idx, tag })),
+    migrationTags.map((tag, idx) => ({ idx, tag })),
+  );
 
   const sqlite = await createUpgradeFixture();
   const before = sqlite.prepare(`SELECT id, catalog_key, calculation_method, rated_power_w, annual_energy_kwh,

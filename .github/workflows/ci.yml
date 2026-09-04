@@ -54,7 +54,10 @@ jobs:
 
   deploy:
     name: Deploy main to WattWise Workers
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      vars.MULTI_USER_CUTOVER_COMPLETE == 'true'
     needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -108,9 +111,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy --config dist/server/wrangler.json
 
-      - name: Smoke-test production home API
+      - name: Smoke-test production catalog API
         env:
           PRODUCTION_URL: https://wattwise.title5656.workers.dev
         run: |
-          response="$(curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors "$PRODUCTION_URL/api/home")"
-          echo "$response" | jq -e 'has("items") and has("summary") and has("history")'
+          response="$(curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors "$PRODUCTION_URL/api/catalog?pageSize=1")"
+          echo "$response" | jq -e 'has("items") and has("pagination") and (.items | length <= 1)'
