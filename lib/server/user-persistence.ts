@@ -55,7 +55,7 @@ export function createUserProvisioner(options: UserProvisionerOptions = {}) {
   };
 }
 
-async function findUserByIdentity(db: D1Database, identity: SitesIdentity): Promise<UserRow | null> {
+async function findUserByIdentity(db: D1Database, identity: CloudflareAccessIdentity): Promise<UserRow | null> {
   const result = await db.prepare(`SELECT users.id AS userId, users.public_id AS publicId,
       users.email AS email, users.display_name AS displayName
     FROM user_identities
