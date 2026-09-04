@@ -132,6 +132,31 @@ test("inactive catalog models are accepted only for the household's existing ins
   });
 });
 
+test('a stale snapshot preserving an inactive instance gets a revision conflict before catalog validation', async () => {
+  const { api, sqlite } = setup();
+  sqlite.exec(`INSERT INTO household_appliances
+    (household_id, appliance_model_id, quantity, hours_per_day, days_per_month, instance_key, usage_schedule, position, created_at, updated_at)
+    VALUES (10, 103, 1, 4, 30, 'legacy-fan', '${JSON.stringify(validItem().usageSchedule)}', 0, ${NOW}, ${NOW})`);
+
+  const winner = await api.PUT(request('/api/households/hh_alpha/home', {
+    method: 'PUT', json: { expectedRevision: 0, items: [] },
+  }), { householdId: 'hh_alpha' });
+  assert.equal(winner.status, 200);
+
+  const stale = await json(await api.PUT(request('/api/households/hh_alpha/home', {
+    method: 'PUT',
+    json: {
+      expectedRevision: 0,
+      items: [validItem('legacy-fan', { id: 'inactive-fan' })],
+    },
+  }), { householdId: 'hh_alpha' }));
+
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.code, 'HOME_REVISION_CONFLICT');
+  assert.equal(stale.body.currentRevision, 1);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM household_appliances WHERE household_id = 10').get().count, 0);
+});
+
 test('non-members cannot read or write another household and cannot mutate it', async () => {
   const { api, sqlite } = setup();
   sqlite.exec(`INSERT INTO household_appliances

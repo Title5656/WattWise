@@ -7,7 +7,7 @@ import { StateConflictError, ValidationError } from './auth-errors.ts';
 import { requireHouseholdRole } from './household-access.ts';
 import {
   readHouseholdHomeSnapshot,
-  readHouseholdApplianceIdentities,
+  readHouseholdHomeValidationState,
   replaceHouseholdHome,
   resolveHouseholdHomeConflict,
   type PersistedHouseholdHomeItem,
@@ -79,10 +79,21 @@ function normalizedCycles(raw: unknown, appliance: Appliance): number | null {
   return Math.round((value as number) / profile.step) * profile.step;
 }
 
-async function validateHomeBody(db: D1Database, householdId: number, raw: unknown) {
+function expectedRevisionFrom(raw: unknown): number {
+  if (!raw || typeof raw !== 'object') invalid();
+  const expectedRevision = (raw as { expectedRevision?: unknown }).expectedRevision;
+  if (!Number.isSafeInteger(expectedRevision) || (expectedRevision as number) < 0) invalid();
+  return expectedRevision as number;
+}
+
+async function validateHomeBody(
+  db: D1Database,
+  existingItems: Array<{ modelId: number; instanceKey: string }>,
+  raw: unknown,
+) {
   if (!raw || typeof raw !== 'object') invalid();
   const body = raw as { expectedRevision?: unknown; items?: unknown };
-  if (!Number.isSafeInteger(body.expectedRevision) || (body.expectedRevision as number) < 0) invalid();
+  const expectedRevision = expectedRevisionFrom(raw);
   if (!Array.isArray(body.items) || body.items.length > MAX_HOME_ITEMS) invalid();
 
   const candidates = body.items.map((rawItem) => {
@@ -96,10 +107,7 @@ async function validateHomeBody(db: D1Database, householdId: number, raw: unknow
   });
   if (new Set(candidates.map((item) => item.instanceId)).size !== candidates.length) invalid();
 
-  const [models, existingItems] = await Promise.all([
-    readCatalogModelReferencesByKeys(db, candidates.map((item) => item.id)),
-    readHouseholdApplianceIdentities(db, householdId),
-  ]);
+  const models = await readCatalogModelReferencesByKeys(db, candidates.map((item) => item.id));
   const modelsByKey = new Map(models.map((model) => [model.appliance.id, model]));
   const existingModelByInstance = new Map(existingItems.map((item) => [item.instanceKey, item.modelId]));
   const persistedItems: PersistedHouseholdHomeItem[] = [];
@@ -132,7 +140,7 @@ async function validateHomeBody(db: D1Database, householdId: number, raw: unknow
       usageSchedule: usageSchedule as UsageSchedule,
     });
   }
-  return { expectedRevision: body.expectedRevision as number, persistedItems, homeItems };
+  return { expectedRevision, persistedItems, homeItems };
 }
 
 async function responseBody(
@@ -162,7 +170,17 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
 
     async put(db: D1Database, user: AuthenticatedUser, householdPublicId: string, request: Request) {
       const access = await requireHouseholdRole(db, user.userId, householdPublicId, EDIT_ROLES);
-      const validated = await validateHomeBody(db, access.householdId, await jsonBody(request));
+      const raw = await jsonBody(request);
+      const expectedRevision = expectedRevisionFrom(raw);
+      const validationState = await readHouseholdHomeValidationState(db, access.householdId, user.userId);
+      if (!validationState) {
+        const currentRevision = await resolveHouseholdHomeConflict(db, user.userId, householdPublicId);
+        throw new HomeRevisionConflictError(currentRevision);
+      }
+      if (validationState.currentRevision !== expectedRevision) {
+        throw new HomeRevisionConflictError(validationState.currentRevision);
+      }
+      const validated = await validateHomeBody(db, validationState.existingItems, raw);
       const timestamp = now();
       const summary = calculateHomeSummary(validated.homeItems, new Date(timestamp));
       const result = await replaceHouseholdHome(db, {

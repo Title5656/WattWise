@@ -22,9 +22,14 @@ export type PersistedHouseholdHomeItem = {
   position: number;
 };
 
-export type HouseholdApplianceIdentity = {
+type HouseholdApplianceIdentity = {
   modelId: number;
   instanceKey: string;
+};
+
+export type HouseholdHomeValidationState = {
+  currentRevision: number;
+  existingItems: HouseholdApplianceIdentity[];
 };
 
 type HouseholdHomeRow = Omit<CatalogRow, 'catalogKey'> & {
@@ -55,15 +60,32 @@ type HistoryRow = {
 
 const INSERT_CHUNK_SIZE = 8;
 
-export async function readHouseholdApplianceIdentities(
+export async function readHouseholdHomeValidationState(
   db: D1Database,
   householdId: number,
-): Promise<HouseholdApplianceIdentity[]> {
-  const rows = await db.prepare(`SELECT appliance_model_id AS modelId, instance_key AS instanceKey
-    FROM household_appliances WHERE household_id = ?`)
-    .bind(householdId)
-    .all<HouseholdApplianceIdentity>();
-  return rows.results;
+  userId: number,
+): Promise<HouseholdHomeValidationState | null> {
+  const rows = await db.prepare(`SELECT households.home_revision AS currentRevision,
+      household_appliances.appliance_model_id AS modelId,
+      household_appliances.instance_key AS instanceKey
+    FROM households
+    INNER JOIN household_members
+      ON household_members.household_id = households.id
+      AND household_members.user_id = ?
+      AND household_members.role IN ('owner', 'admin', 'member')
+    LEFT JOIN household_appliances ON household_appliances.household_id = households.id
+    WHERE households.id = ? AND households.status = 'active'
+    ORDER BY household_appliances.id`)
+    .bind(userId, householdId)
+    .all<{ currentRevision: number; modelId: number | null; instanceKey: string | null }>();
+  const first = rows.results[0];
+  if (!first) return null;
+  return {
+    currentRevision: first.currentRevision,
+    existingItems: rows.results.flatMap((row) => row.modelId === null || row.instanceKey === null
+      ? []
+      : [{ modelId: row.modelId, instanceKey: row.instanceKey }]),
+  };
 }
 
 export async function readHouseholdHomeSnapshot(
