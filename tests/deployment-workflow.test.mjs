@@ -15,6 +15,12 @@ test('production deployment is main-only, migrates before deploy, and smokes a g
   assert.ok(workflow.indexOf('cutover:remote -- verify') < workflow.indexOf('wrangler deploy'));
   assert.match(workflow, /api\/catalog/);
   assert.doesNotMatch(workflow, /api\/home/);
+  assert.match(workflow, /CLOUDFLARE_ACCESS_TEAM_DOMAIN/);
+  assert.match(workflow, /CLOUDFLARE_ACCESS_AUD/);
+  assert.match(workflow, /CF-Access-Client-Id/);
+  assert.match(workflow, /CF-Access-Client-Secret/);
+  assert.match(workflow, /CLOUDFLARE_ACCESS_CLIENT_ID/);
+  assert.match(workflow, /CLOUDFLARE_ACCESS_CLIENT_SECRET/);
 });
 
 test('manual production cutover backs up D1 and verifies without deploying', async () => {

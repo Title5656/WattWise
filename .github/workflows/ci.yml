@@ -81,13 +81,17 @@ jobs:
           name: wattwise-dist-${{ github.sha }}
           path: dist
 
-      - name: Configure production D1 binding
+      - name: Configure production bindings
         env:
           D1_DATABASE_ID: ${{ secrets.CLOUDFLARE_D1_DATABASE_ID }}
+          CLOUDFLARE_ACCESS_TEAM_DOMAIN: ${{ vars.CLOUDFLARE_ACCESS_TEAM_DOMAIN }}
+          CLOUDFLARE_ACCESS_AUD: ${{ vars.CLOUDFLARE_ACCESS_AUD }}
         run: |
           test -n "$D1_DATABASE_ID"
-          jq --arg id "$D1_DATABASE_ID" \
-            '.name = "wattwise" | .d1_databases[0].database_id = $id | .d1_databases[0].migrations_dir = "../../drizzle"' \
+          test -n "$CLOUDFLARE_ACCESS_TEAM_DOMAIN"
+          test -n "$CLOUDFLARE_ACCESS_AUD"
+          jq --arg id "$D1_DATABASE_ID" --arg team "$CLOUDFLARE_ACCESS_TEAM_DOMAIN" --arg aud "$CLOUDFLARE_ACCESS_AUD" \
+            '.name = "wattwise" | .d1_databases[0].database_id = $id | .d1_databases[0].migrations_dir = "../../drizzle" | .vars = ((.vars // {}) + {CLOUDFLARE_ACCESS_TEAM_DOMAIN: $team, CLOUDFLARE_ACCESS_AUD: $aud})' \
             dist/server/wrangler.json > "$RUNNER_TEMP/wrangler.json"
           mv "$RUNNER_TEMP/wrangler.json" dist/server/wrangler.json
 
@@ -121,6 +125,11 @@ jobs:
       - name: Smoke-test production catalog API
         env:
           PRODUCTION_URL: https://wattwise.title5656.workers.dev
+          CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
         run: |
-          response="$(curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors "$PRODUCTION_URL/api/catalog?pageSize=1")"
+          response="$(curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors \
+            -H "CF-Access-Client-Id: $CLOUDFLARE_ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $CLOUDFLARE_ACCESS_CLIENT_SECRET" \
+            "$PRODUCTION_URL/api/catalog?pageSize=1")"
           echo "$response" | jq -e 'has("items") and has("pagination") and (.items | length <= 1)'
