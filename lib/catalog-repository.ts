@@ -34,6 +34,10 @@ export type ActiveCatalogModel = {
   appliance: Appliance;
 };
 
+export type CatalogModelReference = ActiveCatalogModel & {
+  isActive: boolean;
+};
+
 export type CatalogRow = {
   catalogKey: string;
   categorySlug: string;
@@ -180,6 +184,27 @@ export async function readActiveCatalogModelsByKeys(db: D1Database, keys: string
     WHERE m.is_active = 1 AND m.catalog_key IN (${placeholders})
   `, uniqueKeys);
   return rows.map((row) => ({ modelId: row.modelId, appliance: mapCatalogRow(row) }));
+}
+
+export async function readCatalogModelReferencesByKeys(
+  db: D1Database,
+  keys: string[],
+): Promise<CatalogModelReference[]> {
+  const uniqueKeys = [...new Set(keys)];
+  if (uniqueKeys.length === 0) return [];
+  const placeholders = uniqueKeys.map(() => '?').join(', ');
+  const rows = await all<CatalogRow & { modelId: number; isActive: number }>(db, `
+    SELECT m.id AS modelId, m.is_active AS isActive, ${catalogColumns}
+    FROM appliance_models m
+    JOIN categories c ON c.id = m.category_id
+    JOIN brands b ON b.id = m.brand_id
+    WHERE m.catalog_key IN (${placeholders})
+  `, uniqueKeys);
+  return rows.map((row) => ({
+    modelId: row.modelId,
+    isActive: row.isActive === 1,
+    appliance: mapCatalogRow(row),
+  }));
 }
 
 export async function readCatalog(db: D1Database, query: CatalogQuery): Promise<CatalogResponse> {

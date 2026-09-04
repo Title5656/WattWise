@@ -136,6 +136,8 @@ test('household creation is atomic, validates fields, and list is membership-sco
 
   const listedA = await result(await api.listHouseholds(request('/api/households', { user: users.a })));
   const listedB = await result(await api.listHouseholds(request('/api/households', { user: users.b })));
+  assert.equal(listedA.body.userId, 'usr_a');
+  assert.equal(listedB.body.userId, 'usr_b');
   assert.deepEqual(listedA.body.households.map(({ id, role }) => [id, role]), [['hh_a', 'owner'], ['hh_generated_1', 'owner']]);
   assert.deepEqual(listedB.body.households.map(({ id, role }) => [id, role]), [['hh_b', 'owner']]);
 

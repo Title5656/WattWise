@@ -47,7 +47,7 @@ test('membership verification requests identity before memberships', async () =>
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(calls.map(({ url }) => url), ['/api/me', '/api/households']);
 
-  households.resolve(response(200, { households: [memberHousehold] }));
+  households.resolve(response(200, { userId: user.id, households: [memberHousehold] }));
   await mounted;
   assert.equal(controller.getState().phase, 'ready');
   assert.equal(controller.getState().households[0].role, 'member');
@@ -59,7 +59,7 @@ test('focus and visible restoration revalidate without refreshing while hidden',
     calls.push(url);
     return url === '/api/me'
       ? response(200, { user })
-      : response(200, { households: [memberHousehold] });
+      : response(200, { userId: user.id, households: [memberHousehold] });
   });
 
   await controller.mount();
@@ -77,7 +77,7 @@ test('membership refresh removes verified content before publishing a viewer dem
   const states = [];
   const controller = lifecycle().createHouseholdMembershipsLifecycle(async (url) => url === '/api/me'
     ? response(200, { user })
-    : response(200, { households: [{ ...memberHousehold, role }] }));
+    : response(200, { userId: user.id, households: [{ ...memberHousehold, role }] }));
   controller.subscribe((state) => states.push(state));
 
   await controller.mount();
@@ -92,6 +92,30 @@ test('membership refresh removes verified content before publishing a viewer dem
   assert.equal(refreshed.households[0].role, 'viewer');
   assert.notEqual(lifecycle().householdContentScopeKey(user, refreshed.households[0]), oldKey);
   assert.ok(states.some((state) => state.phase === 'loading' && state.user === null));
+});
+
+test('membership refresh retries when account identity changes between sequential responses', async () => {
+  const userB = { id: 'user-2', email: 'other@example.com', displayName: 'อีกบัญชี' };
+  const householdB = { ...memberHousehold, id: 'house-2', name: 'บ้านอีกบัญชี' };
+  let meCalls = 0;
+  const readyStates = [];
+  const controller = lifecycle().createHouseholdMembershipsLifecycle(async (url) => {
+    if (url === '/api/me') {
+      meCalls += 1;
+      return response(200, { user: meCalls === 1 ? user : userB });
+    }
+    return response(200, { userId: userB.id, households: [householdB] });
+  });
+  controller.subscribe((state) => {
+    if (state.phase === 'ready') readyStates.push(state);
+  });
+
+  await controller.mount();
+
+  assert.equal(meCalls, 2);
+  assert.equal(readyStates.length, 1);
+  assert.equal(readyStates[0].user.id, userB.id);
+  assert.equal(readyStates[0].households[0].id, householdB.id);
 });
 
 test('scope replacement disposes the old resource before creating the new one', () => {

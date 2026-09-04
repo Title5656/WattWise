@@ -22,6 +22,11 @@ export type PersistedHouseholdHomeItem = {
   position: number;
 };
 
+export type HouseholdApplianceIdentity = {
+  modelId: number;
+  instanceKey: string;
+};
+
 type HouseholdHomeRow = Omit<CatalogRow, 'catalogKey'> & {
   householdPublicId: string;
   householdName: string;
@@ -49,6 +54,17 @@ type HistoryRow = {
 };
 
 const INSERT_CHUNK_SIZE = 8;
+
+export async function readHouseholdApplianceIdentities(
+  db: D1Database,
+  householdId: number,
+): Promise<HouseholdApplianceIdentity[]> {
+  const rows = await db.prepare(`SELECT appliance_model_id AS modelId, instance_key AS instanceKey
+    FROM household_appliances WHERE household_id = ?`)
+    .bind(householdId)
+    .all<HouseholdApplianceIdentity>();
+  return rows.results;
+}
 
 export async function readHouseholdHomeSnapshot(
   db: D1Database,

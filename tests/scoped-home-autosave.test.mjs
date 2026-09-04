@@ -218,6 +218,38 @@ test('an existing draft with a stale revision becomes a non-retrying conflict', 
   assert.equal(puts, 0);
 });
 
+test('activation clears a stale-revision draft when the server already contains the same snapshot', async () => {
+  const localStorage = storage();
+  const timer = scheduler();
+  outbox.stageScopedPendingHomeSave(
+    localStorage,
+    scopeA1,
+    5,
+    JSON.stringify({ items: [item('already-saved')] }),
+    90,
+  );
+  let puts = 0;
+  const { controller } = createController({
+    localStorage,
+    timer,
+    fetch: async (_url, init = {}) => {
+      if (init.method === 'PUT') puts += 1;
+      return response(200, { revision: 7, items: [item('already-saved')] });
+    },
+  });
+
+  await controller.activate(scopeA1);
+  timer.flush();
+  await flushPromises();
+
+  assert.equal(controller.getState().phase, 'saved');
+  assert.equal(controller.getState().revision, 7);
+  assert.deepEqual(controller.getState().items, [item('already-saved')]);
+  assert.equal(outbox.readScopedPendingHomeSave(localStorage, scopeA1), null);
+  assert.equal(puts, 0);
+  assert.equal(controller.edit([item('next-edit')]), true);
+});
+
 test('retry after pending-draft GET failure revalidates with GET before any PUT', async () => {
   const localStorage = storage();
   const timer = scheduler();

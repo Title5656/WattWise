@@ -28,6 +28,7 @@ export function createHouseholdApi(getDb: () => D1Database, options: HouseholdSe
 
     listHouseholds(request: Request) {
       return authenticated(request, async (db, user) => Response.json({
+        userId: user.publicId,
         households: await service.listHouseholds(db, user),
       }));
     },

@@ -410,6 +410,20 @@ export function createScopedHomeAutosaveController({
       if (pending) {
         session.confirmedBody = confirmedBody;
         if (snapshot.revision !== pending.expectedRevision) {
+          if (confirmedBody === pending.body && clearScopedPendingHomeSave(storage, session.scope, pending)) {
+            session.pending = null;
+            session.revision = snapshot.revision;
+            session.items = snapshot.items as HomeAppliance[];
+            publish({
+              phase: 'saved',
+              scope: session.scope,
+              generation: session.generation,
+              revision: session.revision,
+              items: session.items,
+              currentRevision: null,
+            });
+            return;
+          }
           session.blocked = true;
           publish({
             phase: 'conflict',

@@ -60,28 +60,37 @@ export function createHouseholdMembershipsLifecycle(fetcher: ClientFetcher) {
 
     const isCurrent = () => mounted && candidate === generation && !signal.aborted;
     try {
-      const meResponse = await fetcher('/api/me', { cache: 'no-store', signal });
-      if (!isCurrent()) return;
-      if (meResponse.status === 401) {
-        publish({ ...emptyMembershipsState, phase: 'session-expired' });
-        return;
-      }
-      if (!meResponse.ok) throw new Error('ไม่สามารถโหลดข้อมูลบัญชีได้');
-      const me = await meResponse.json() as { user?: CurrentUser };
-      if (!isCurrent()) return;
-      if (!me.user?.id || !me.user.email) throw new Error('ข้อมูลบัญชีไม่สมบูรณ์');
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const meResponse = await fetcher('/api/me', { cache: 'no-store', signal });
+        if (!isCurrent()) return;
+        if (meResponse.status === 401) {
+          publish({ ...emptyMembershipsState, phase: 'session-expired' });
+          return;
+        }
+        if (!meResponse.ok) throw new Error('ไม่สามารถโหลดข้อมูลบัญชีได้');
+        const me = await meResponse.json() as { user?: CurrentUser };
+        if (!isCurrent()) return;
+        if (!me.user?.id || !me.user.email) throw new Error('ข้อมูลบัญชีไม่สมบูรณ์');
 
-      const householdsResponse = await fetcher('/api/households', { cache: 'no-store', signal });
-      if (!isCurrent()) return;
-      if (householdsResponse.status === 401) {
-        publish({ ...emptyMembershipsState, phase: 'session-expired' });
+        const householdsResponse = await fetcher('/api/households', { cache: 'no-store', signal });
+        if (!isCurrent()) return;
+        if (householdsResponse.status === 401) {
+          publish({ ...emptyMembershipsState, phase: 'session-expired' });
+          return;
+        }
+        if (!householdsResponse.ok) throw new Error('ไม่สามารถโหลดรายชื่อบ้านได้');
+        const result = await householdsResponse.json() as { userId?: unknown; households?: HouseholdMembership[] };
+        if (!isCurrent()) return;
+        if (typeof result.userId !== 'string' || !Array.isArray(result.households)) {
+          throw new Error('ข้อมูลรายชื่อบ้านไม่สมบูรณ์');
+        }
+        if (result.userId !== me.user.id) {
+          if (attempt === 0) continue;
+          throw new Error('บัญชีมีการเปลี่ยนแปลงระหว่างโหลดข้อมูล');
+        }
+        publish({ phase: 'ready', user: me.user, households: result.households, error: '' });
         return;
       }
-      if (!householdsResponse.ok) throw new Error('ไม่สามารถโหลดรายชื่อบ้านได้');
-      const result = await householdsResponse.json() as { households?: HouseholdMembership[] };
-      if (!isCurrent()) return;
-      if (!Array.isArray(result.households)) throw new Error('ข้อมูลรายชื่อบ้านไม่สมบูรณ์');
-      publish({ phase: 'ready', user: me.user, households: result.households, error: '' });
     } catch (error) {
       if (!isCurrent()) return;
       publish({

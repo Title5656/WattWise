@@ -105,6 +105,33 @@ test('owner and member can save/read stable household instances while viewer can
   assert.equal(sqlite.prepare('SELECT home_revision FROM households WHERE id = 10').get().home_revision, 1);
 });
 
+test("inactive catalog models are accepted only for the household's existing instance identities", async () => {
+  const { api, sqlite } = setup();
+  sqlite.exec(`INSERT INTO household_appliances
+    (household_id, appliance_model_id, quantity, hours_per_day, days_per_month, instance_key, usage_schedule, position, created_at, updated_at)
+    VALUES (10, 103, 1, 4, 30, 'legacy-fan', '${JSON.stringify(validItem().usageSchedule)}', 0, ${NOW}, ${NOW})`);
+  const existing = validItem('legacy-fan', { id: 'inactive-fan', quantity: 2 });
+
+  const addedInactive = await api.PUT(request('/api/households/hh_alpha/home', {
+    method: 'PUT',
+    json: { expectedRevision: 0, items: [existing, validItem('new-inactive', { id: 'inactive-fan' })] },
+  }), { householdId: 'hh_alpha' });
+  assert.equal(addedInactive.status, 400);
+  assert.deepEqual(sqlite.prepare(`SELECT instance_key AS instanceId, quantity FROM household_appliances
+    WHERE household_id = 10`).all().map((row) => ({ ...row })), [{ instanceId: 'legacy-fan', quantity: 1 }]);
+
+  const preserved = await json(await api.PUT(request('/api/households/hh_alpha/home', {
+    method: 'PUT', json: { expectedRevision: 0, items: [existing] },
+  }), { householdId: 'hh_alpha' }));
+  assert.equal(preserved.status, 200);
+  assert.equal(preserved.body.revision, 1);
+  assert.equal(preserved.body.items[0].id, 'inactive-fan');
+  assert.deepEqual({ ...sqlite.prepare(`SELECT appliance_model_id AS modelId, instance_key AS instanceId, quantity
+    FROM household_appliances WHERE household_id = 10`).get() }, {
+    modelId: 103, instanceId: 'legacy-fan', quantity: 2,
+  });
+});
+
 test('non-members cannot read or write another household and cannot mutate it', async () => {
   const { api, sqlite } = setup();
   sqlite.exec(`INSERT INTO household_appliances

@@ -1,4 +1,4 @@
-import { readActiveCatalogModelsByKeys } from '../catalog-repository.ts';
+import { readCatalogModelReferencesByKeys } from '../catalog-repository.ts';
 import { calculateHomeSummary, type Appliance, type HomeAppliance } from '../home-config.ts';
 import { getBillingMonth, selectRecentRecords } from '../monthly-history.ts';
 import { getUsageProfile } from '../usage-profiles.ts';
@@ -7,6 +7,7 @@ import { StateConflictError, ValidationError } from './auth-errors.ts';
 import { requireHouseholdRole } from './household-access.ts';
 import {
   readHouseholdHomeSnapshot,
+  readHouseholdApplianceIdentities,
   replaceHouseholdHome,
   resolveHouseholdHomeConflict,
   type PersistedHouseholdHomeItem,
@@ -78,7 +79,7 @@ function normalizedCycles(raw: unknown, appliance: Appliance): number | null {
   return Math.round((value as number) / profile.step) * profile.step;
 }
 
-async function validateHomeBody(db: D1Database, raw: unknown) {
+async function validateHomeBody(db: D1Database, householdId: number, raw: unknown) {
   if (!raw || typeof raw !== 'object') invalid();
   const body = raw as { expectedRevision?: unknown; items?: unknown };
   if (!Number.isSafeInteger(body.expectedRevision) || (body.expectedRevision as number) < 0) invalid();
@@ -95,13 +96,17 @@ async function validateHomeBody(db: D1Database, raw: unknown) {
   });
   if (new Set(candidates.map((item) => item.instanceId)).size !== candidates.length) invalid();
 
-  const models = await readActiveCatalogModelsByKeys(db, candidates.map((item) => item.id));
+  const [models, existingItems] = await Promise.all([
+    readCatalogModelReferencesByKeys(db, candidates.map((item) => item.id)),
+    readHouseholdApplianceIdentities(db, householdId),
+  ]);
   const modelsByKey = new Map(models.map((model) => [model.appliance.id, model]));
+  const existingModelByInstance = new Map(existingItems.map((item) => [item.instanceKey, item.modelId]));
   const persistedItems: PersistedHouseholdHomeItem[] = [];
   const homeItems: HomeAppliance[] = [];
   for (const [position, item] of candidates.entries()) {
     const model = modelsByKey.get(item.id);
-    if (!model) invalid();
+    if (!model || (!model.isActive && existingModelByInstance.get(item.instanceId) !== model.modelId)) invalid();
     const { appliance } = model;
     validateSchedule(item.usageSchedule, appliance);
     const profile = getUsageProfile(appliance.usageProfileId);
@@ -157,7 +162,7 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
 
     async put(db: D1Database, user: AuthenticatedUser, householdPublicId: string, request: Request) {
       const access = await requireHouseholdRole(db, user.userId, householdPublicId, EDIT_ROLES);
-      const validated = await validateHomeBody(db, await jsonBody(request));
+      const validated = await validateHomeBody(db, access.householdId, await jsonBody(request));
       const timestamp = now();
       const summary = calculateHomeSummary(validated.homeItems, new Date(timestamp));
       const result = await replaceHouseholdHome(db, {
