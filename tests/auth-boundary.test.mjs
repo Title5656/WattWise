@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { getCurrentIdentity } from '../lib/server/sites-identity.ts';
-import { createCurrentUserResolver, getCurrentUser, requireUser } from '../lib/server/current-user.ts';
+import { createCurrentUserResolver, requireUser } from '../lib/server/current-user.ts';
 import {
   AuthenticationRequiredError,
   HouseholdForbiddenError,

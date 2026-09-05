@@ -17,7 +17,7 @@ export default function OnboardingPage() {
   useEffect(() => {
     const controller = new AbortController();
     void fetch('/api/me', { cache: 'no-store', signal: controller.signal }).then(async (response) => {
-      if (response.status === 401) { window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`); return; }
+      if (response.status === 401) { router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`); return; }
       const result = await response.json() as { user?: CurrentUser; message?: string };
       if (!response.ok || !result.user) throw new Error(result.message || 'โหลดข้อมูลบัญชีไม่สำเร็จ');
       if (!result.user.needsDisplayName) { router.replace(returnTo); return; }
