@@ -9,15 +9,15 @@ import { householdDashboardPath, householdMyHomePath } from '@/lib/household-ui'
 
 type ActivePage = 'status' | 'home' | 'profile' | 'settings';
 
-export function WattWiseSidebar({ active, householdId, homeItemCount }: { active: ActivePage; householdId: string; homeItemCount?: number }) {
+export function WattWiseSidebar({ active, householdId, homeItemCount }: { active: ActivePage; householdId?: string; homeItemCount?: number }) {
   const [open, setOpen] = useState(false);
-  const dashboardPath = householdDashboardPath(householdId);
-  const myHomePath = householdMyHomePath(householdId);
+  const dashboardPath = householdId ? householdDashboardPath(householdId) : '/';
+  const myHomePath = householdId ? householdMyHomePath(householdId) : '/my-home';
   const links = [
     { id: 'status', label: 'Status', detail: 'ภาพรวมพลังงานทั้งหมด', icon: LayoutDashboard, href: `${dashboardPath}#overview`, badge: 'LIVE' },
     { id: 'home', label: 'My Home', detail: 'จัดการเครื่องใช้ไฟฟ้าในบ้าน', icon: House, href: myHomePath, badge: 'BUILD' },
-    { id: 'profile', label: 'Profile', detail: 'แก้ไขข้อมูลและบัญชีผู้ใช้', icon: UserRound, href: `${dashboardPath}#profile`, badge: undefined },
-    { id: 'settings', label: 'Settings', detail: 'ตั้งค่าระบบและการแจ้งเตือน', icon: Settings, href: `${dashboardPath}#settings`, badge: undefined },
+    { id: 'profile', label: 'Profile', detail: 'บัญชีและบ้านของคุณ', icon: UserRound, href: '/profile', badge: undefined },
+    { id: 'settings', label: 'Settings', detail: 'บัญชีและการออกจากระบบ', icon: Settings, href: '/settings', badge: undefined },
   ] as const;
 
   return <>
@@ -44,7 +44,7 @@ export function WattWiseSidebar({ active, householdId, homeItemCount }: { active
       </nav>
       <Link className="sidebar-account" href={myHomePath} onClick={() => setOpen(false)} aria-label="ไปจัดการอุปกรณ์ใน My Home">
         <i className="sidebar-home-icon"><House aria-hidden="true" /><span /></i>
-        <span><b>สถานะบ้าน</b><small>{homeItemCount === undefined ? 'กำลังเชื่อมข้อมูลบ้าน' : `${homeItemCount} อุปกรณ์ · ออนไลน์`}</small></span>
+        <span><b>สถานะบ้าน</b><small>{!householdId ? 'เลือกบ้านเพื่อดูอุปกรณ์' : homeItemCount === undefined ? 'กำลังเชื่อมข้อมูลบ้าน' : `${homeItemCount} อุปกรณ์ · ออนไลน์`}</small></span>
         <ChevronRight aria-hidden="true" />
       </Link>
     </aside>

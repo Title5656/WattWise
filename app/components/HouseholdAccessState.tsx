@@ -7,10 +7,12 @@ export function HouseholdAccessState({
   phase,
   error,
   onRefresh,
+  embedded = false,
 }: {
   phase: 'loading' | 'session-expired' | 'access-denied' | 'error';
   error?: string;
   onRefresh?: () => void;
+  embedded?: boolean;
 }) {
   const loading = phase === 'loading';
   const title = loading
@@ -28,15 +30,17 @@ export function HouseholdAccessState({
         ? 'บ้านนี้อาจถูกลบ หรือบัญชีของคุณไม่ได้เป็นสมาชิกแล้ว'
         : error || 'กรุณาลองใหม่อีกครั้ง';
 
-  return <main className="household-entry-shell">
+  const Container = embedded ? 'section' : 'main';
+  const Heading = embedded ? 'h2' : 'h1';
+  return <Container className="household-entry-shell">
     <Card className="household-state-card" role={loading ? 'status' : 'alert'} aria-live="polite">
       <i>{loading ? <LoaderCircle className="state-spinner" aria-hidden="true" /> : <AlertTriangle aria-hidden="true" />}</i>
-      <h1>{title}</h1>
+      <Heading>{title}</Heading>
       <p>{detail}</p>
       {!loading && <div className="household-state-actions">
         {onRefresh && <Button type="button" onClick={onRefresh}>ตรวจสอบบัญชีและสิทธิ์อีกครั้ง</Button>}
         <Button asChild variant="outline"><Link href="/">กลับหน้าเลือกบ้าน</Link></Button>
       </div>}
     </Card>
-  </main>;
+  </Container>;
 }

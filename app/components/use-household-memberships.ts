@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { hasUnsavedForms } from '@/lib/unsaved-forms';
 import {
   createHouseholdMembershipsLifecycle,
   type MembershipsState,
@@ -13,8 +14,8 @@ export function useHouseholdMemberships(): MembershipsState & { refresh(): Promi
 
   useEffect(() => {
     const unsubscribe = lifecycle.subscribe(setState);
-    const refreshOnFocus = () => { void lifecycle.focus(); };
-    const refreshOnVisibility = () => { void lifecycle.visibilityChanged(document.visibilityState); };
+    const refreshOnFocus = () => { if (!hasUnsavedForms()) void lifecycle.focus(); };
+    const refreshOnVisibility = () => { if (!hasUnsavedForms()) void lifecycle.visibilityChanged(document.visibilityState); };
     void lifecycle.mount();
     window.addEventListener('focus', refreshOnFocus);
     document.addEventListener('visibilitychange', refreshOnVisibility);

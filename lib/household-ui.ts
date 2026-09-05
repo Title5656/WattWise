@@ -47,6 +47,10 @@ export function canEditHousehold(role: HouseholdRole): boolean {
   return role !== 'viewer';
 }
 
+export function canManageHousehold(role: HouseholdRole): boolean {
+  return role === 'owner' || role === 'admin';
+}
+
 export function homeAutosaveStorageForRole(
   storage: HomeAutosaveStorage,
   role: HouseholdRole,

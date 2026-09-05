@@ -1,7 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Bell } from 'lucide-react';
+import Link from 'next/link';
+import { Bell, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   displayUserName,
@@ -37,9 +38,10 @@ export function HouseholdIdentityBar({
         {households.map((candidate) => <option value={candidate.id} key={candidate.id}>{candidate.name}</option>)}
       </select>
     </label>
+    <Button asChild variant="outline"><Link href="/households/new"><Plus aria-hidden="true" />เพิ่มบ้าน</Link></Button>
     <Button variant="ghost" size="icon" className="notify" aria-label="การแจ้งเตือน"><Bell aria-hidden="true" /><i /></Button>
-    <div className="profile" aria-label={`${displayUserName(user)} · ${household.name} · ${householdRoleLabel(household.role)}`}>
+    <Link href="/profile" className="profile" aria-label={`${displayUserName(user)} · ${household.name} · ${householdRoleLabel(household.role)}`}>
       <i>{userInitials(user)}</i><span><b>{household.name}</b><small>{displayUserName(user)} · {householdRoleLabel(household.role)}</small></span>
-    </div>
+    </Link>
   </div>;
 }

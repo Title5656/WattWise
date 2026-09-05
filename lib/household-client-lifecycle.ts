@@ -153,19 +153,27 @@ export function createScopedResourceSlot<Resource extends DisposableResource>() 
 }
 
 export type HouseholdCreationState = {
-  phase: 'idle' | 'submitting' | 'error' | 'session-expired';
+  phase: 'idle' | 'submitting' | 'error' | 'session-expired' | 'access-denied';
   error: string;
 };
 
 export type HouseholdCreationInput = {
   name: string;
-  province?: string;
-  electricityProvider?: string;
+  province?: string | null;
+  electricityProvider?: string | null;
 };
 
 const initialCreationState: HouseholdCreationState = { phase: 'idle', error: '' };
 
 export function createHouseholdCreationLifecycle(fetcher: ClientFetcher) {
+  return createHouseholdMutationLifecycle(fetcher, '/api/households', 'POST');
+}
+
+export function createHouseholdEditLifecycle(fetcher: ClientFetcher, householdId: string) {
+  return createHouseholdMutationLifecycle(fetcher, `/api/households/${encodeURIComponent(householdId)}`, 'PATCH');
+}
+
+function createHouseholdMutationLifecycle(fetcher: ClientFetcher, url: string, method: 'POST' | 'PATCH') {
   let mounted = false;
   let generation = 0;
   let request: AbortController | null = null;
@@ -183,7 +191,7 @@ export function createHouseholdCreationLifecycle(fetcher: ClientFetcher) {
       mounted = true;
     },
     async submit(input: HouseholdCreationInput, onCreated: (household: HouseholdMembership) => void) {
-      if (!mounted || state.phase === 'submitting' || state.phase === 'session-expired') return false;
+      if (!mounted || state.phase === 'submitting' || state.phase === 'session-expired' || state.phase === 'access-denied') return false;
       generation += 1;
       const candidate = generation;
       request?.abort();
@@ -193,8 +201,8 @@ export function createHouseholdCreationLifecycle(fetcher: ClientFetcher) {
       publish({ phase: 'submitting', error: '' });
 
       try {
-        const response = await fetcher('/api/households', {
-          method: 'POST',
+        const response = await fetcher(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(input),
           signal,
@@ -204,16 +212,26 @@ export function createHouseholdCreationLifecycle(fetcher: ClientFetcher) {
           publish({ phase: 'session-expired', error: '' });
           return false;
         }
+        if (response.status === 403 || response.status === 404) {
+          publish({ phase: 'access-denied', error: 'คุณไม่มีสิทธิ์แก้ไขบ้านนี้ หรือบ้านนี้ไม่พร้อมใช้งานแล้ว' });
+          return false;
+        }
+        if (!response.ok) {
+          publish({ phase: 'error', error: response.status === 400
+            ? 'กรุณาตรวจสอบชื่อบ้าน จังหวัด และผู้ให้บริการไฟฟ้า'
+            : 'บันทึกบ้านไม่สำเร็จ กรุณาลองใหม่อีกครั้ง' });
+          return false;
+        }
         const body = await response.json() as { household?: HouseholdMembership; error?: string };
         if (!isCurrent()) return false;
-        if (!response.ok || !body.household) throw new Error(body.error ?? 'สร้างบ้านไม่สำเร็จ');
+        if (!body.household?.id) throw new Error('Incomplete household response');
         onCreated(body.household);
         return true;
-      } catch (error) {
+      } catch {
         if (!isCurrent()) return false;
         publish({
           phase: 'error',
-          error: error instanceof Error ? error.message : 'สร้างบ้านไม่สำเร็จ',
+          error: 'บันทึกบ้านไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่',
         });
         return false;
       }

@@ -27,7 +27,7 @@ test('sidebar footer is a useful My Home status link', async () => {
     readProjectFile('app/components/WattWiseSidebar.tsx'),
   ]);
 
-  assert.match(sidebar, /householdId: string; homeItemCount\?: number/);
+  assert.match(sidebar, /householdId\?: string; homeItemCount\?: number/);
   assert.match(sidebar, /className="sidebar-account"/);
   assert.match(sidebar, /href=\{myHomePath\}/);
   assert.match(sidebar, /householdMyHomePath\(householdId\)/);

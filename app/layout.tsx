@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Noto_Sans_Thai } from 'next/font/google';
 import './globals.css';
+import { AccountSessionBoundary } from './components/AccountSessionBoundary';
 
 const notoSansThai = Noto_Sans_Thai({
   subsets: ['latin', 'thai'],
@@ -32,5 +33,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="th" className={notoSansThai.variable}><body>{children}</body></html>;
+  return <html lang="th" className={notoSansThai.variable}><body><AccountSessionBoundary>{children}</AccountSessionBoundary></body></html>;
 }
