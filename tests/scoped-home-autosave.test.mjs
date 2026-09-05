@@ -277,6 +277,8 @@ test('retry after pending-draft GET failure revalidates with GET before any PUT'
 
   await controller.activate(scopeA1);
   assert.equal(controller.getState().phase, 'retryable-error');
+  assert.equal(controller.getState().editable, false);
+  assert.equal(controller.edit([item('must-not-replace-unvalidated-draft')]), false);
   controller.retry();
   await flushPromises();
 
@@ -544,6 +546,7 @@ test('network failure is retryable within the same scope and preserves its draft
   await flushPromises();
 
   assert.equal(controller.getState().phase, 'retryable-error');
+  assert.equal(controller.getState().editable, true);
   assert.ok(outbox.readScopedPendingHomeSave(localStorage, scopeA1));
   controller.retry();
   await flushPromises();
@@ -551,6 +554,81 @@ test('network failure is retryable within the same scope and preserves its draft
   assert.equal(puts, 2);
   assert.equal(controller.getState().phase, 'saved');
   assert.equal(outbox.readScopedPendingHomeSave(localStorage, scopeA1), null);
+});
+
+test('an initial GET failure without a validated snapshot keeps editing disabled', async () => {
+  const { controller } = createController({
+    fetch: async () => response(503, { error: 'unavailable' }),
+  });
+
+  await controller.activate(scopeA1);
+
+  assert.equal(controller.getState().phase, 'retryable-error');
+  assert.equal(controller.getState().editable, false);
+  assert.equal(controller.edit([item('unvalidated')]), false);
+});
+
+test('retryable save failure accepts newer local edits and retries only the latest draft manually', async () => {
+  const putBodies = [];
+  const { controller, localStorage, timer } = createController({
+    fetch: async (_url, init = {}) => {
+      if (init.method !== 'PUT') return response(200, { revision: 2, items: [] });
+      putBodies.push(JSON.parse(init.body));
+      return putBodies.length === 1
+        ? response(503, { code: 'HOME_SAVE_FAILED' })
+        : response(200, { revision: 3, items: putBodies.at(-1).items });
+    },
+  });
+  await controller.activate(scopeA1);
+  controller.edit([item('first-draft')]);
+  timer.flush();
+  await flushPromises();
+
+  assert.equal(controller.getState().phase, 'retryable-error');
+  assert.equal(controller.getState().editable, true);
+  assert.equal(controller.edit([item('intermediate-draft')]), true);
+  assert.equal(controller.edit([item('latest-draft')]), true);
+  assert.equal(controller.getState().phase, 'retryable-error');
+  assert.deepEqual(controller.getState().items, [item('latest-draft')]);
+  assert.deepEqual(
+    JSON.parse(outbox.readScopedPendingHomeSave(localStorage, scopeA1).body).items,
+    [item('latest-draft')],
+  );
+  assert.equal(timer.size, 0);
+  timer.flush();
+  await flushPromises();
+  assert.equal(putBodies.length, 1);
+
+  controller.retry();
+  await flushPromises();
+
+  assert.equal(putBodies.length, 2);
+  assert.deepEqual(putBodies[1], { expectedRevision: 2, items: [item('latest-draft')] });
+  assert.equal(controller.getState().phase, 'saved');
+  assert.equal(outbox.readScopedPendingHomeSave(localStorage, scopeA1), null);
+});
+
+test('reverting a retryable draft to the confirmed snapshot fully unblocks later edits', async () => {
+  let puts = 0;
+  const { controller, localStorage, timer } = createController({
+    fetch: async (_url, init = {}) => {
+      if (init.method !== 'PUT') return response(200, { revision: 4, items: [] });
+      puts += 1;
+      return response(503, { code: 'HOME_SAVE_FAILED' });
+    },
+  });
+  await controller.activate(scopeA1);
+  controller.edit([item('failed-draft')]);
+  timer.flush();
+  await flushPromises();
+
+  assert.equal(controller.getState().phase, 'retryable-error');
+  assert.equal(controller.edit([]), true);
+  assert.equal(controller.getState().phase, 'saved');
+  assert.equal(outbox.readScopedPendingHomeSave(localStorage, scopeA1), null);
+  assert.equal(controller.edit([item('later-draft')]), true);
+  assert.equal(timer.size, 1);
+  assert.equal(puts, 1);
 });
 
 test('403 and 404 save failures stop autosave and cannot be manually retried', async () => {

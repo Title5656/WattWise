@@ -58,8 +58,6 @@ type HistoryRow = {
   actualAt: number | null;
 };
 
-const INSERT_CHUNK_SIZE = 8;
-
 export async function readHouseholdHomeValidationState(
   db: D1Database,
   householdId: number,
@@ -200,31 +198,25 @@ function prepareItemInserts(
   items: PersistedHouseholdHomeItem[],
   now: number,
 ): D1PreparedStatement[] {
-  const statements: D1PreparedStatement[] = [];
+  if (items.length === 0) return [];
   const guard = revisionGuard(householdId, expectedRevision, userId);
-  for (let offset = 0; offset < items.length; offset += INSERT_CHUNK_SIZE) {
-    const chunk = items.slice(offset, offset + INSERT_CHUNK_SIZE);
-    const selects = chunk.map(() => 'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?').join(' UNION ALL ');
-    const bindings = chunk.flatMap((item) => [
-      householdId,
-      item.modelId,
-      item.quantity,
-      item.hoursPerDay,
-      item.cyclesPerMonth,
-      item.usageSchedule,
-      item.instanceKey,
-      item.position,
-      now,
-      now,
-    ]);
-    statements.push(db.prepare(`INSERT INTO household_appliances
+  const payload = JSON.stringify(items);
+  return [db.prepare(`INSERT INTO household_appliances
       (household_id, appliance_model_id, quantity, hours_per_day, cycles_per_month,
        usage_schedule, instance_key, position, created_at, updated_at)
-      SELECT * FROM (${selects})
+      SELECT ?,
+        CAST(json_extract(item.value, '$.modelId') AS INTEGER),
+        CAST(json_extract(item.value, '$.quantity') AS INTEGER),
+        CAST(json_extract(item.value, '$.hoursPerDay') AS REAL),
+        CASE WHEN json_type(item.value, '$.cyclesPerMonth') = 'null' THEN NULL
+          ELSE CAST(json_extract(item.value, '$.cyclesPerMonth') AS REAL) END,
+        json_extract(item.value, '$.usageSchedule'),
+        json_extract(item.value, '$.instanceKey'),
+        CAST(json_extract(item.value, '$.position') AS INTEGER),
+        ?, ?
+      FROM json_each(?) AS item
       WHERE EXISTS (SELECT 1 FROM households WHERE ${guard.sql})`)
-      .bind(...bindings, ...guard.values));
-  }
-  return statements;
+    .bind(householdId, now, now, payload, ...guard.values)];
 }
 
 function prepareEstimateMutations(

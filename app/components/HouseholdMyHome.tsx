@@ -45,6 +45,7 @@ const periodLabels: Record<UsagePeriod, { label: string; range: string }> = {
 
 const initialAutosaveState: ScopedHomeAutosaveState = {
   phase: 'idle',
+  editable: false,
   scope: null,
   generation: 0,
   revision: null,
@@ -106,7 +107,7 @@ function HouseholdMyHomeContent({
   const autosaveRole = household.role;
   const autosaveUserId = user.id;
   const homeItems = autosaveState.items;
-  const canMutate = !readOnly && ['ready', 'saving', 'saved'].includes(autosaveState.phase);
+  const canMutate = !readOnly && autosaveState.editable;
 
   const loadCatalog = useCallback(async (page: number, append: boolean) => {
     const request = catalogRequests.current.begin();

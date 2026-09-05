@@ -46,15 +46,23 @@ export async function verifyAccessJwt(
     issuer: config.issuer,
     audience: config.audience,
     algorithms: ['RS256'],
-    requiredClaims: ['sub', 'email'],
+    requiredClaims: ['sub'],
   });
-  if (typeof payload.sub !== 'string' || typeof payload.email !== 'string') {
+  const commonName = typeof payload.common_name === 'string' ? payload.common_name.trim() : '';
+  if (payload.type === 'app' && payload.sub === '' && /^[a-zA-Z0-9.-]{1,200}$/.test(commonName)) {
+    return {
+      subject: `service-token:${commonName}`,
+      email: `${commonName}@service-token.wattwise.invalid`,
+      displayName: 'Cloudflare Access service token',
+    };
+  }
+  if (typeof payload.sub !== 'string' || !payload.sub.trim() || typeof payload.email !== 'string') {
     throw new Error('Cloudflare Access identity is incomplete.');
   }
   const email = payload.email.trim().toLowerCase();
   if (!email) throw new Error('Cloudflare Access identity is incomplete.');
   return {
-    subject: payload.sub,
+    subject: payload.sub.trim(),
     email,
     displayName: typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : email,
   };

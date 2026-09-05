@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-test('production deployment is main-only, migrates before deploy, and smokes a global endpoint', async () => {
+test('production deployment is main-only, migrates before deploy, and smokes catalog plus an isolated Home mutation', async () => {
   const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
 
   assert.match(workflow, /github\.ref\s*==\s*'refs\/heads\/main'/);
@@ -14,6 +14,16 @@ test('production deployment is main-only, migrates before deploy, and smokes a g
   assert.match(workflow, /cutover:remote -- verify/);
   assert.ok(workflow.indexOf('cutover:remote -- verify') < workflow.indexOf('wrangler deploy'));
   assert.match(workflow, /api\/catalog/);
+  assert.match(workflow, /api\/households\/\$household_id\/home/);
+  assert.match(workflow, /expectedRevision/);
+  assert.match(workflow, /WattWise CI Home mutation fixture/);
+  assert.match(workflow, /DELETE FROM households/);
+  assert.match(workflow, /service-token:\$CLOUDFLARE_ACCESS_CLIENT_ID/);
+  assert.match(workflow, /fixture_count/);
+  assert.match(workflow, /range\(0; 7\)/);
+  assert.match(workflow, /ci-smoke-/);
+  assert.match(workflow, /all\(\.items\[\];/);
+  assert.match(workflow, /trap .*cleanup/);
   assert.doesNotMatch(workflow, /api\/home/);
   assert.match(workflow, /CLOUDFLARE_ACCESS_TEAM_DOMAIN/);
   assert.match(workflow, /CLOUDFLARE_ACCESS_AUD/);

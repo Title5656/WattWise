@@ -18,6 +18,7 @@ export function createHouseholdHomeApi(getDb: () => D1Database, options: Househo
 
   async function authenticated(
     request: Request,
+    operationName: string,
     operation: (db: D1Database, user: Awaited<ReturnType<typeof requireUser>>) => Promise<Response>,
   ) {
     try {
@@ -32,19 +33,19 @@ export function createHouseholdHomeApi(getDb: () => D1Database, options: Househo
           currentRevision: error.currentRevision,
         }, { status: error.status });
       }
-      return errorResponse(error);
+      return errorResponse(error, { request, operation: operationName });
     }
   }
 
   return {
     GET(request: Request, context: RouteContext) {
-      return authenticated(request, async (db, user) => {
+      return authenticated(request, 'household-home.get', async (db, user) => {
         const { householdId } = await params(context);
         return Response.json(await service.get(db, user, householdId));
       });
     },
     PUT(request: Request, context: RouteContext) {
-      return authenticated(request, async (db, user) => {
+      return authenticated(request, 'household-home.put', async (db, user) => {
         const { householdId } = await params(context);
         return Response.json(await service.put(db, user, householdId, request));
       });

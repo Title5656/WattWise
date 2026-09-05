@@ -46,9 +46,45 @@ async function signedToken({ audience = config.audience, expiresIn = '5m' } = {}
   return { token, getKey: createLocalJWKSet({ keys: [jwk] }) };
 }
 
+async function signedServiceToken({ commonName = 'ci-smoke.access', subject = '', type = 'app' } = {}) {
+  const { publicKey, privateKey } = await generateKeyPair('RS256');
+  const jwk = await exportJWK(publicKey);
+  jwk.kid = 'service-test-key';
+  const token = await new SignJWT({ common_name: commonName, type })
+    .setProtectedHeader({ alg: 'RS256', kid: jwk.kid })
+    .setIssuer(config.issuer)
+    .setAudience(config.audience)
+    .setSubject(subject)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(privateKey);
+  return { token, getKey: createLocalJWKSet({ keys: [jwk] }) };
+}
+
 test('accepts a signed Access JWT with configured issuer and audience', async () => {
   const { token, getKey } = await signedToken();
   assert.deepEqual(await verifyAccessJwt(token, config, getKey), identity);
+});
+
+test('maps an authorized Access service token to an isolated application identity', async () => {
+  const { token, getKey } = await signedServiceToken();
+  assert.deepEqual(await verifyAccessJwt(token, config, getKey), {
+    subject: 'service-token:ci-smoke.access',
+    email: 'ci-smoke.access@service-token.wattwise.invalid',
+    displayName: 'Cloudflare Access service token',
+  });
+});
+
+test('rejects service-token-shaped JWTs unless their app claims are complete and isolated', async () => {
+  for (const claims of [
+    { commonName: '', subject: '', type: 'app' },
+    { commonName: 'invalid/name', subject: '', type: 'app' },
+    { commonName: 'ci-smoke.access', subject: 'unexpected-user', type: 'app' },
+    { commonName: 'ci-smoke.access', subject: '', type: 'user' },
+  ]) {
+    const { token, getKey } = await signedServiceToken(claims);
+    await assert.rejects(() => verifyAccessJwt(token, config, getKey));
+  }
 });
 
 test('rejects malformed and wrong-audience Access JWTs', async () => {

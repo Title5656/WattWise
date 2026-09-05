@@ -47,6 +47,7 @@ export type ScopedHomeAutosavePhase =
 
 export type ScopedHomeAutosaveState = {
   phase: ScopedHomeAutosavePhase;
+  editable: boolean;
   scope: HomeSaveScope | null;
   generation: number;
   revision: number | null;
@@ -132,6 +133,7 @@ export function createScopedHomeAutosaveController({
   let active: Session | null = null;
   let state: ScopedHomeAutosaveState = {
     phase: 'idle',
+    editable: false,
     scope: null,
     generation,
     revision: null,
@@ -140,8 +142,10 @@ export function createScopedHomeAutosaveController({
   };
   const listeners = new Set<(next: ScopedHomeAutosaveState) => void>();
 
-  const publish = (next: ScopedHomeAutosaveState) => {
-    state = next;
+  const publish = (next: Omit<ScopedHomeAutosaveState, 'editable'>) => {
+    const editable = active?.loaded === true
+      && ['ready', 'saving', 'saved', 'retryable-error'].includes(next.phase);
+    state = { ...next, editable };
     for (const listener of listeners) listener(state);
   };
 
@@ -469,7 +473,9 @@ export function createScopedHomeAutosaveController({
     activate,
     edit(items) {
       const session = active;
-      if (!session || !isActive(session) || session.blocked || session.revision === null) return false;
+      if (!session || !isActive(session) || session.revision === null) return false;
+      const editingRetryableDraft = session.blocked && state.phase === 'retryable-error' && session.loaded;
+      if (session.blocked && !editingRetryableDraft) return false;
       const body = canonicalBody(items);
       if (!body) return false;
       session.items = items;
@@ -491,6 +497,7 @@ export function createScopedHomeAutosaveController({
         }
         if (session.pending) clearScopedPendingHomeSave(storage, session.scope, session.pending);
         session.pending = null;
+        session.blocked = false;
         cancelTimer(session);
         publish({
           phase: 'saved',
@@ -506,6 +513,17 @@ export function createScopedHomeAutosaveController({
       const pending = stageScopedPendingHomeSave(storage, session.scope, session.revision, body, updatedAt);
       if (!pending) return false;
       session.pending = pending;
+      if (editingRetryableDraft) {
+        publish({
+          phase: 'retryable-error',
+          scope: session.scope,
+          generation: session.generation,
+          revision: session.revision,
+          items: session.items,
+          currentRevision: null,
+        });
+        return true;
+      }
       publish({
         phase: 'ready',
         scope: session.scope,

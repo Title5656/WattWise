@@ -493,7 +493,7 @@ test('estimate replacement and clearing preserve actual fields in the canonical 
   });
 });
 
-test('a 100-item snapshot is chunked below D1 bind limits and keeps every position', async () => {
+test('a 100-item snapshot uses one JSON rowset insert within D1 limits and keeps every position', async () => {
   const { api, sqlite, batchCalls } = setup();
   const items = Array.from({ length: 100 }, (_, index) => validItem(`fan-${index}`, { quantity: index % 9 + 1 }));
 
@@ -508,7 +508,59 @@ test('a 100-item snapshot is chunked below D1 bind limits and keeps every positi
     instanceId: item.instanceId, position,
   })));
   assert.equal(batchCalls.length, 1);
-  assert.ok(batchCalls[0].every((statement) => statement.values.length <= 100));
+  assert.equal(batchCalls[0].length, 5);
+  const inserts = batchCalls[0].filter((statement) => /^INSERT INTO household_appliances/.test(statement.sql));
+  assert.equal(inserts.length, 1);
+  assert.match(inserts[0].sql, /FROM json_each\(\?\)/);
+  assert.ok(inserts[0].values.length < 10);
   assert.match(batchCalls[0].at(-2).sql, /^SELECT records\.billing_month AS billingMonth/);
   assert.match(batchCalls[0].at(-1).sql, /^UPDATE households SET home_revision = home_revision \+ 1/);
+});
+
+test('a failed replacement batch returns a safe correlated HOME_SAVE_FAILED response', async () => {
+  const { db } = setup();
+  const batchFailure = new Error('D1_ERROR: UNIQUE constraint failed: secret_table.secret_column');
+  const failingDb = {
+    ...db,
+    async batch(statements) {
+      if (statements.some((statement) => /^INSERT INTO household_appliances/.test(statement.sql))) {
+        throw batchFailure;
+      }
+      return db.batch(statements);
+    },
+  };
+  const api = homeModule.createHouseholdHomeApi(() => failingDb, { now: () => NOW });
+  const originalConsoleError = console.error;
+  const logs = [];
+  console.error = (entry) => logs.push(entry);
+  try {
+    const saveRequest = request('/api/households/hh_alpha/home', {
+      method: 'PUT',
+      json: { expectedRevision: 0, items: [validItem('will-fail')] },
+    });
+    saveRequest.headers.set('cf-ray', 'ray-home-save-test');
+    const failed = await json(await api.PUT(saveRequest, { householdId: 'hh_alpha' }));
+
+    assert.equal(failed.status, 500);
+    assert.deepEqual(failed.body, {
+      code: 'HOME_SAVE_FAILED',
+      message: 'The Home snapshot could not be saved.',
+      requestId: 'ray-home-save-test',
+    });
+    assert.equal(JSON.stringify(failed.body).includes('secret_table'), false);
+    assert.deepEqual(logs, [{
+      event: 'household_api_error',
+      operation: 'household-home.put',
+      requestId: 'ray-home-save-test',
+      stage: 'replace-home-batch',
+      householdId: 'hh_alpha',
+      itemCount: 1,
+      revision: 0,
+      errorName: 'InternalServerError',
+      errorMessage: 'The Home snapshot could not be saved.',
+      causeMessage: batchFailure.message,
+    }]);
+  } finally {
+    console.error = originalConsoleError;
+  }
 });

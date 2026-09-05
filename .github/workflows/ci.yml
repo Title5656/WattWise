@@ -133,3 +133,121 @@ jobs:
             -H "CF-Access-Client-Secret: $CLOUDFLARE_ACCESS_CLIENT_SECRET" \
             "$PRODUCTION_URL/api/catalog?pageSize=1")"
           echo "$response" | jq -e 'has("items") and has("pagination") and (.items | length <= 1)'
+
+      - name: Smoke-test an isolated production Home mutation
+        env:
+          PRODUCTION_URL: https://wattwise.title5656.workers.dev
+          CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          fixture_name="WattWise CI Home mutation fixture"
+          if [[ ! "$CLOUDFLARE_ACCESS_CLIENT_ID" =~ ^[A-Za-z0-9.-]{1,200}$ ]]; then
+            echo "Cloudflare Access client ID has an unsafe format" >&2
+            exit 1
+          fi
+          access_headers=(
+            -H "CF-Access-Client-Id: $CLOUDFLARE_ACCESS_CLIENT_ID"
+            -H "CF-Access-Client-Secret: $CLOUDFLARE_ACCESS_CLIENT_SECRET"
+          )
+          cleanup() {
+            cleanup_sql="DELETE FROM households
+              WHERE name = 'WattWise CI Home mutation fixture'
+                AND id IN (
+                  SELECT hm.household_id
+                  FROM household_members AS hm
+                  JOIN user_identities AS ui ON ui.user_id = hm.user_id
+                  WHERE hm.role = 'owner'
+                    AND ui.provider = 'cloudflare-access'
+                    AND ui.subject = 'service-token:$CLOUDFLARE_ACCESS_CLIENT_ID'
+                )"
+            cleaned=false
+            for attempt in 1 2 3; do
+              if npx wrangler d1 execute DB --remote --command "$cleanup_sql" --config dist/server/wrangler.json; then
+                cleaned=true
+                break
+              fi
+              sleep $((attempt * 2))
+            done
+            test "$cleaned" = true
+
+            verification="$(npx wrangler d1 execute DB --remote --json \
+              --command "SELECT COUNT(*) AS fixture_count
+                FROM households AS h
+                WHERE h.name = 'WattWise CI Home mutation fixture'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM household_members AS hm
+                    JOIN user_identities AS ui ON ui.user_id = hm.user_id
+                    WHERE hm.household_id = h.id
+                      AND hm.role = 'owner'
+                      AND ui.provider = 'cloudflare-access'
+                      AND ui.subject = 'service-token:$CLOUDFLARE_ACCESS_CLIENT_ID'
+                  )" \
+              --config dist/server/wrangler.json)"
+            echo "$verification" | jq -e '[.. | objects | .fixture_count? // empty] | last == 0'
+          }
+          cleanup
+          trap 'cleanup || true' EXIT
+
+          catalog="$(curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors \
+            "${access_headers[@]}" \
+            "$PRODUCTION_URL/api/catalog?category=fan&pageSize=1")"
+          model_id="$(echo "$catalog" | jq -er '.items[0].id')"
+          household="$(curl --fail --silent --show-error --request POST \
+            "${access_headers[@]}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -nc --arg name "$fixture_name" '{name: $name}')" \
+            "$PRODUCTION_URL/api/households")"
+          household_id="$(echo "$household" | jq -er '.household.id')"
+          snapshot="$(jq -nc --arg id "$model_id" '{
+            expectedRevision: 0,
+            items: [range(0; 7) as $position | {
+              id: $id,
+              instanceId: ("ci-smoke-" + ($position | tostring)),
+              quantity: 1,
+              hoursPerDay: 4,
+              cyclesPerMonth: null,
+              usageSchedule: {
+                kind: "hours",
+                hoursByPeriod: {night: 0, morning: 1, daytime: 1, evening: 2}
+              }
+            }]
+          }')"
+          saved="$(curl --fail --silent --show-error --request PUT \
+            "${access_headers[@]}" \
+            -H "Content-Type: application/json" \
+            --data "$snapshot" \
+            "$PRODUCTION_URL/api/households/$household_id/home")"
+          echo "$saved" | jq -e --arg id "$model_id" '
+            .revision == 1
+              and (.items | length == 7)
+              and ([.items[].instanceId] == [range(0; 7) | "ci-smoke-\(.)"])
+              and all(.items[];
+                .id == $id
+                  and .quantity == 1
+                  and .hoursPerDay == 4
+                  and .cyclesPerMonth == null
+                  and .usageSchedule.kind == "hours"
+                  and .usageSchedule.hoursByPeriod == {night: 0, morning: 1, daytime: 1, evening: 2}
+              )'
+
+          confirmed="$(curl --fail --silent --show-error \
+            "${access_headers[@]}" \
+            "$PRODUCTION_URL/api/households/$household_id/home")"
+          echo "$confirmed" | jq -e --arg id "$model_id" '
+            .revision == 1
+              and (.items | length == 7)
+              and ([.items[].instanceId] == [range(0; 7) | "ci-smoke-\(.)"])
+              and all(.items[];
+                .id == $id
+                  and .quantity == 1
+                  and .hoursPerDay == 4
+                  and .cyclesPerMonth == null
+                  and .usageSchedule.kind == "hours"
+                  and .usageSchedule.hoursByPeriod == {night: 0, morning: 1, daytime: 1, evening: 2}
+              )'
+
+          cleanup
+          trap - EXIT

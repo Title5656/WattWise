@@ -13,6 +13,7 @@ import {
   type PersistedHouseholdHomeItem,
 } from './household-home-repository.ts';
 import type { AuthenticatedUser } from './current-user.ts';
+import { InternalServerError } from './http-errors.ts';
 
 const EDIT_ROLES = ['owner', 'admin', 'member'] as const;
 const MAX_HOME_ITEMS = 100;
@@ -183,15 +184,30 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
       const validated = await validateHomeBody(db, validationState.existingItems, raw);
       const timestamp = now();
       const summary = calculateHomeSummary(validated.homeItems, new Date(timestamp));
-      const result = await replaceHouseholdHome(db, {
-        householdId: access.householdId,
-        expectedRevision: validated.expectedRevision,
-        userId: user.userId,
-        items: validated.persistedItems,
-        billingMonth: getBillingMonth(new Date(timestamp)),
-        summary,
-        now: timestamp,
-      });
+      let result: Awaited<ReturnType<typeof replaceHouseholdHome>>;
+      try {
+        result = await replaceHouseholdHome(db, {
+          householdId: access.householdId,
+          expectedRevision: validated.expectedRevision,
+          userId: user.userId,
+          items: validated.persistedItems,
+          billingMonth: getBillingMonth(new Date(timestamp)),
+          summary,
+          now: timestamp,
+        });
+      } catch (cause) {
+        throw new InternalServerError(
+          'HOME_SAVE_FAILED',
+          'The Home snapshot could not be saved.',
+          cause,
+          {
+            stage: 'replace-home-batch',
+            householdId: householdPublicId,
+            itemCount: validated.persistedItems.length,
+            revision: validated.expectedRevision,
+          },
+        );
+      }
       if (!result.saved) {
         throw new HomeRevisionConflictError(await resolveHouseholdHomeConflict(db, user.userId, householdPublicId));
       }

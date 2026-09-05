@@ -27,3 +27,9 @@ test('quantity UI caps and snaps typed values to the 1 through 99 save contract'
   assert.match(source, /label="จำนวน" unit="เครื่อง" value=\{item\.quantity\} min=\{1\} max=\{99\} step=\{1\}/);
   assert.match(source, /Math\.min\(99, Math\.max\(1, Math\.round\(Number\.isFinite\(value\) \? value : 1\)\)\)/);
 });
+
+test('retryable save errors keep local appliance controls editable', async () => {
+  const source = await read();
+
+  assert.match(source, /const canMutate = !readOnly && autosaveState\.editable/);
+});
