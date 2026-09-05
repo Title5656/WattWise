@@ -10,10 +10,9 @@ function latestRule(styles, selector) {
   return rules.at(-1)?.[1] ?? '';
 }
 
-test('header profile and notification controls share the same 44px height', async () => {
+test('header profile retains its 44px height', async () => {
   const styles = await readProjectFile('app/globals.css');
 
-  assert.match(latestRule(styles, '.notify'), /height:\s*44px/);
   assert.match(latestRule(styles, '.header-actions>.profile'), /height:\s*44px/);
   assert.match(latestRule(styles, '.header-actions>.profile'), /min-height:\s*44px/);
   assert.match(latestRule(styles, '.profile>i'), /width:\s*32px/);

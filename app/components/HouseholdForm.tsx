@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { createHouseholdCreationLifecycle, createHouseholdEditLifecycle } from '@/lib/household-client-lifecycle';
 import type { HouseholdMembership } from '@/lib/household-ui';
 import { registerUnsavedForm } from '@/lib/unsaved-forms';
+import { isThaiProvince, THAI_PROVINCES } from '@/lib/thai-provinces';
 import { HouseholdAccessState } from './HouseholdAccessState';
 
 export function HouseholdForm({ household, onSaved, onCancel }: {
@@ -25,6 +26,7 @@ export function HouseholdForm({ household, onSaved, onCancel }: {
   const dirty = name !== (household?.name ?? '') || province !== (household?.province ?? '') || provider !== (household?.electricityProvider ?? '');
   const saving = state.phase === 'submitting';
   const legacyProvider = household?.electricityProvider;
+  const validProvince = !province || isThaiProvince(province);
 
   useLayoutEffect(() => {
     releaseDirty.current = dirty || saving ? registerUnsavedForm() : () => {};
@@ -39,7 +41,7 @@ export function HouseholdForm({ household, onSaved, onCancel }: {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !validProvince) return;
     await mutation.submit({ name: name.trim(), province: province.trim() || null, electricityProvider: provider || null }, (saved) => {
       releaseDirty.current();
       onSaved(saved);
@@ -50,7 +52,11 @@ export function HouseholdForm({ household, onSaved, onCancel }: {
   return <form className="household-form" onSubmit={submit}>
     <fieldset disabled={saving || state.phase === 'access-denied'}>
       <label>ชื่อบ้าน<Input value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} placeholder="เช่น บ้านสวน" /></label>
-      <label>จังหวัด <small>ไม่บังคับ</small><Input value={province} onChange={(event) => setProvince(event.target.value)} maxLength={100} placeholder="เช่น เชียงใหม่" /></label>
+      <label>จังหวัด <small>ไม่บังคับ</small><select value={province} onChange={(event) => setProvince(event.target.value)} aria-invalid={!validProvince}>
+        <option value="">ยังไม่ระบุ</option>
+        {THAI_PROVINCES.map(([thai, english]) => <option key={thai} value={household?.province === english ? english : thai}>{thai}</option>)}
+        {!validProvince && <option value={province} disabled>{province} · กรุณาเลือกจังหวัดใหม่</option>}
+      </select></label>
       <label>ผู้ให้บริการไฟฟ้า<select value={provider} onChange={(event) => setProvider(event.target.value)}>
         <option value="">ยังไม่ระบุ</option>
         <option value="PEA">PEA · การไฟฟ้าส่วนภูมิภาค</option>
@@ -61,7 +67,7 @@ export function HouseholdForm({ household, onSaved, onCancel }: {
     </fieldset>
     {state.error && <p className="account-error" role="alert">{state.error}</p>}
     <div className="account-actions">
-      <Button type="submit" disabled={saving || state.phase === 'access-denied' || !name.trim() || (!!household && !dirty)}>
+      <Button type="submit" disabled={saving || state.phase === 'access-denied' || !name.trim() || !validProvince || (!!household && !dirty)}>
         <Save aria-hidden="true" />{saving ? 'กำลังบันทึก...' : household ? 'บันทึกข้อมูลบ้าน' : 'สร้างบ้านและเริ่มใช้งาน'}
       </Button>
       {onCancel && <Button type="button" variant="outline" disabled={saving} onClick={() => {

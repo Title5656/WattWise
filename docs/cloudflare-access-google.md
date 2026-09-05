@@ -1,5 +1,24 @@
 # Cloudflare Access with Google
 
+## Login branding (BUG-01, 2026-09-06)
+
+The reference page belongs to Cloudflare Access at
+`floral-dream-b933.cloudflareaccess.com`, not the app's `app/login/page.tsx`.
+The connected Cloudflare API showed an empty organization `login_design`.
+Updated that configuration and verified it by reading it back:
+
+- `background_color`: `#f5f7f2`
+- `text_color`: `#20332a`
+- `header_text`: `WattWise · Home Energy`
+- `footer_text`: `วางแผนพลังงานและค่าไฟของบ้านคุณ`
+
+This branding applies to the organization's Access login pages. Both existing
+Access applications are for WattWise. Identity providers, application policies,
+session duration, and automatic redirects were preserved and checked afterward.
+No external configuration blocker remains. A fresh interactive sign-in was not
+performed. A logo was omitted because the existing logo URL is Access-protected
+and could require authentication before the login page can display it.
+
 ## One-time Cloudflare setup
 
 1. In Cloudflare Zero Trust, add Google as an identity provider.

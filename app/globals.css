@@ -1,5 +1,19 @@
 @import 'tailwindcss';
 
+/* Consistent household controls and clearer appliance boundaries. */
+.header-actions .household-switcher select,.header-actions .household-add,.header-actions>.profile{height:44px;min-height:44px;border:1px solid #163a2817;border-radius:10px;background:#fff;box-shadow:none;font-weight:650}
+.header-actions .household-switcher{gap:0;min-width:0}
+.header-actions .household-switcher select{max-width:100%;text-overflow:ellipsis}
+.builder-dropzone .builder-home-item{padding:16px;border:1px solid #d9e2d9;border-radius:12px;background:#fff;box-shadow:none}
+.builder-dropzone .builder-home-item+.builder-home-item{margin-top:16px}
+.usage-line-chart{width:100%;overflow-x:auto;padding-top:16px}
+.usage-line-chart svg{display:block;width:100%;min-width:600px;height:auto}
+.usage-grid{stroke:#e2e9e2;stroke-width:1}
+.usage-line{fill:none;stroke:#668e22;stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
+.usage-point{fill:#fff;stroke:#668e22;stroke-width:2}
+.usage-point:focus{fill:#c9f45d;outline:none;stroke-width:4}
+.usage-value,.usage-time{font-size:12px;fill:#526258}
+
 /* Account pages reuse the existing WattWise theme tokens. */
 .account-content{width:100%;max-width:1280px;font-size:16px}
 .account-heading{margin-bottom:28px}.account-heading h1{font-size:clamp(24px,3vw,34px);margin:6px 0;font-weight:700}

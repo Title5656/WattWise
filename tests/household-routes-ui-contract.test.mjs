@@ -65,7 +65,7 @@ test('viewer UI exposes a read-only explanation and gates every home and bill mu
 
   assert.match(dashboard, /const canEdit = canEditHousehold\(household\.role\)/);
   assert.match(dashboard, /คุณมีสิทธิ์ดูข้อมูลเท่านั้น/);
-  assert.match(dashboard, /\{canEdit && <Button[^>]+onClick=\{\(\) => openBillForm\(\)\}/);
+  assert.match(dashboard, /\{canEdit && <Button[\s\S]*?onClick=\{\(\) => billFormOpen \? closeBillForm\(\) : openBillForm\(\)\}/);
   assert.match(myHome, /const readOnly = !canEditHousehold\(household\.role\)/);
   assert.match(myHome, /คุณมีสิทธิ์ดูข้อมูลเท่านั้น/);
   assert.match(myHome, /disabled=\{readOnly \|\| !canMutate\}/);
