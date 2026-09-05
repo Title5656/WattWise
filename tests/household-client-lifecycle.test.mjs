@@ -53,6 +53,20 @@ test('membership verification requests identity before memberships', async () =>
   assert.equal(controller.getState().households[0].role, 'member');
 });
 
+test('membership loading stops before household data when display-name onboarding is required', async () => {
+  const calls = [];
+  const controller = lifecycle().createHouseholdMembershipsLifecycle(async (url) => {
+    calls.push(url);
+    return response(200, { user: { ...user, needsDisplayName: true } });
+  });
+
+  await controller.mount();
+
+  assert.equal(controller.getState().phase, 'profile-required');
+  assert.equal(controller.getState().user.id, user.id);
+  assert.deepEqual(calls, ['/api/me']);
+});
+
 test('focus and visible restoration revalidate without refreshing while hidden', async () => {
   const calls = [];
   const controller = lifecycle().createHouseholdMembershipsLifecycle(async (url) => {

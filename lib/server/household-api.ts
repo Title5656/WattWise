@@ -2,12 +2,23 @@ import { ValidationError } from './auth-errors.ts';
 import { requireUser } from './current-user.ts';
 import { createHouseholdService, type HouseholdServiceOptions } from './household-service.ts';
 import { errorResponse } from './http-errors.ts';
+import { normalizeDisplayName } from '../auth-navigation.ts';
 
 type RouteParams = Record<string, string>;
 type RouteContext = RouteParams | { params: RouteParams | Promise<RouteParams> };
 
 export function createHouseholdApi(getDb: () => D1Database, options: HouseholdServiceOptions = {}) {
   const service = createHouseholdService(options);
+  const now = options.now ?? Date.now;
+
+  function publicUser(user: Awaited<ReturnType<typeof requireUser>>) {
+    return {
+      id: user.publicId,
+      email: user.email,
+      displayName: user.displayName,
+      needsDisplayName: user.displayNameConfirmedAt === null,
+    };
+  }
 
   async function authenticated<T>(request: Request, operation: (db: D1Database, user: Awaited<ReturnType<typeof requireUser>>) => Promise<T>) {
     try {
@@ -22,8 +33,26 @@ export function createHouseholdApi(getDb: () => D1Database, options: HouseholdSe
   return {
     me(request: Request) {
       return authenticated(request, async (_db, user) => Response.json({
-        user: { id: user.publicId, email: user.email, displayName: user.displayName },
+        user: publicUser(user),
       }));
+    },
+
+    updateMe(request: Request) {
+      return authenticated(request, async (db, user) => {
+        const input = await jsonBody(request) as { displayName?: unknown };
+        const normalized = normalizeDisplayName(input.displayName);
+        if (normalized.error) throw new ValidationError(normalized.error);
+        const displayName = normalized.value;
+        const timestamp = now();
+        await db.prepare(`UPDATE users
+          SET display_name = ?, display_name_confirmed_at = ?, updated_at = ?
+          WHERE id = ?`)
+          .bind(displayName, timestamp, timestamp, user.userId)
+          .run();
+        return Response.json({
+          user: publicUser({ ...user, displayName, displayNameConfirmedAt: timestamp }),
+        });
+      });
     },
 
     listHouseholds(request: Request) {

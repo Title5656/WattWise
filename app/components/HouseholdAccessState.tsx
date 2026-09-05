@@ -9,7 +9,7 @@ export function HouseholdAccessState({
   onRefresh,
   embedded = false,
 }: {
-  phase: 'loading' | 'session-expired' | 'access-denied' | 'error';
+  phase: 'loading' | 'profile-required' | 'session-expired' | 'access-denied' | 'error';
   error?: string;
   onRefresh?: () => void;
   embedded?: boolean;
@@ -17,6 +17,8 @@ export function HouseholdAccessState({
   const loading = phase === 'loading';
   const title = loading
     ? 'กำลังโหลดข้อมูลบ้าน'
+    : phase === 'profile-required'
+      ? 'กำลังเตรียมโปรไฟล์'
     : phase === 'session-expired'
       ? 'เซสชันหมดอายุ'
       : phase === 'access-denied'
@@ -24,6 +26,8 @@ export function HouseholdAccessState({
         : 'โหลดข้อมูลไม่สำเร็จ';
   const detail = loading
     ? 'กำลังตรวจสอบบัญชีและสิทธิ์สมาชิก'
+    : phase === 'profile-required'
+      ? 'กรุณายืนยันชื่อที่ต้องการใช้ใน WattWise'
     : phase === 'session-expired'
       ? 'กรุณาเข้าสู่ระบบอีกครั้ง แล้วกลับมาที่หน้านี้'
       : phase === 'access-denied'

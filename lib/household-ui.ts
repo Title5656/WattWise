@@ -4,6 +4,7 @@ export type CurrentUser = {
   id: string;
   email: string;
   displayName: string | null;
+  needsDisplayName?: boolean;
 };
 
 export type HouseholdMembership = {
@@ -31,7 +32,7 @@ const roleLabels: Record<HouseholdRole, string> = {
 };
 
 export function displayUserName(user: CurrentUser): string {
-  return user.displayName?.trim() || user.email;
+  return user.displayName?.trim() || 'ผู้ใช้';
 }
 
 export function userInitials(user: CurrentUser): string {

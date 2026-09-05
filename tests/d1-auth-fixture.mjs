@@ -26,6 +26,7 @@ export function createAuthDatabase() {
       public_id TEXT NOT NULL UNIQUE,
       email TEXT NOT NULL,
       display_name TEXT,
+      display_name_confirmed_at INTEGER,
       avatar_url TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL

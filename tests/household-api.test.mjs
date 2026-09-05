@@ -111,7 +111,7 @@ test('GET /api/me requires verified identity and returns only the app profile', 
   });
   assert.deepEqual(await result(await api.me(request('/api/me', { user: users.a }))), {
     status: 200,
-    body: { user: { id: 'usr_a', email: 'a@example.com', displayName: 'User A' } },
+    body: { user: { id: 'usr_a', email: 'a@example.com', displayName: 'User A', needsDisplayName: true } },
   });
 });
 

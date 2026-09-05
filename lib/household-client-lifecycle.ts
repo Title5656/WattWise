@@ -1,6 +1,6 @@
 import type { CurrentUser, HouseholdMembership } from './household-ui';
 
-export type MembershipsPhase = 'loading' | 'ready' | 'session-expired' | 'error';
+export type MembershipsPhase = 'loading' | 'ready' | 'profile-required' | 'session-expired' | 'error';
 
 export type MembershipsState = {
   phase: MembershipsPhase;
@@ -71,6 +71,10 @@ export function createHouseholdMembershipsLifecycle(fetcher: ClientFetcher) {
         const me = await meResponse.json() as { user?: CurrentUser };
         if (!isCurrent()) return;
         if (!me.user?.id || !me.user.email) throw new Error('ข้อมูลบัญชีไม่สมบูรณ์');
+        if (me.user.needsDisplayName) {
+          publish({ ...emptyMembershipsState, phase: 'profile-required', user: me.user });
+          return;
+        }
 
         const householdsResponse = await fetcher('/api/households', { cache: 'no-store', signal });
         if (!isCurrent()) return;

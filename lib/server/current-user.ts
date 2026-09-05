@@ -9,6 +9,7 @@ export type AuthenticatedUser = {
   subject: string;
   email: string;
   displayName: string;
+  displayNameConfirmedAt: number | null;
 };
 
 export function createCurrentUserResolver(options: UserProvisionerOptions = {}) {

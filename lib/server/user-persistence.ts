@@ -6,6 +6,7 @@ type UserRow = {
   publicId: string;
   email: string;
   displayName: string | null;
+  displayNameConfirmedAt: number | null;
 };
 
 export type UserProvisionerOptions = {
@@ -51,13 +52,15 @@ export function createUserProvisioner(options: UserProvisionerOptions = {}) {
       subject: identity.subject,
       email: user.email,
       displayName: user.displayName ?? user.email,
+      displayNameConfirmedAt: user.displayNameConfirmedAt,
     };
   };
 }
 
 async function findUserByIdentity(db: D1Database, identity: CloudflareAccessIdentity): Promise<UserRow | null> {
   const result = await db.prepare(`SELECT users.id AS userId, users.public_id AS publicId,
-      users.email AS email, users.display_name AS displayName
+      users.email AS email, users.display_name AS displayName,
+      users.display_name_confirmed_at AS displayNameConfirmedAt
     FROM user_identities
     INNER JOIN users ON users.id = user_identities.user_id
     WHERE user_identities.provider = ? AND user_identities.subject = ?`)

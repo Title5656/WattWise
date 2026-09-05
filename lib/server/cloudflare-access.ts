@@ -107,7 +107,7 @@ export function createAccessGuard(
   return {
     async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext): Promise<Response> {
       const url = new URL(request.url);
-      if (request.method === 'GET' && url.pathname === '/api/catalog') return handler.fetch(request, env, ctx);
+      if (request.method === 'GET' && isPublicPath(url.pathname)) return handler.fetch(request, env, ctx);
 
       const localIdentity = allowLocalSitesIdentity ? localSitesIdentity(request) : null;
       if (localIdentity) return handler.fetch(withVerifiedIdentity(request, localIdentity), env, ctx);
@@ -121,4 +121,11 @@ export function createAccessGuard(
       }
     },
   };
+}
+
+function isPublicPath(pathname: string): boolean {
+  return pathname === '/login'
+    || pathname === '/api/catalog'
+    || pathname.startsWith('/_next/')
+    || /\.(?:css|js|map|png|jpe?g|gif|svg|webp|ico|woff2?)$/i.test(pathname);
 }

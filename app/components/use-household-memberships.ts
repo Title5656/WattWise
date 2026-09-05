@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { hasUnsavedForms } from '@/lib/unsaved-forms';
 import {
   createHouseholdMembershipsLifecycle,
@@ -8,6 +9,7 @@ import {
 } from '@/lib/household-client-lifecycle';
 
 export function useHouseholdMemberships(): MembershipsState & { refresh(): Promise<void> } {
+  const router = useRouter();
   const [lifecycle] = useState(() => createHouseholdMembershipsLifecycle(fetch));
   const [state, setState] = useState<MembershipsState>(() => lifecycle.getState());
   const refresh = useCallback(() => lifecycle.refresh(), [lifecycle]);
@@ -26,6 +28,12 @@ export function useHouseholdMemberships(): MembershipsState & { refresh(): Promi
       lifecycle.dispose();
     };
   }, [lifecycle]);
+
+  useEffect(() => {
+    if (state.phase !== 'profile-required') return;
+    const returnTo = `${location.pathname}${location.search}`;
+    router.replace(`/onboarding?returnTo=${encodeURIComponent(returnTo)}`);
+  }, [router, state.phase]);
 
   return { ...state, refresh };
 }

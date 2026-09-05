@@ -183,3 +183,17 @@ test('allows public catalog reads through without an identity', async () => {
 
   assert.equal((await guard.fetch(new Request('https://wattwise.test/api/catalog?pageSize=1'), {}, {})).status, 200);
 });
+
+test('allows the branded login and its assets publicly while keeping the auth start protected', async () => {
+  const seen = [];
+  const guard = createAccessGuard({ fetch: async (request) => {
+    seen.push(new URL(request.url).pathname);
+    return new Response('public');
+  } }, async () => { throw new Error('verification must not run for public routes'); });
+
+  for (const path of ['/login', '/wattwise-logo-small.png', '/_next/static/app.js']) {
+    assert.equal((await guard.fetch(new Request(`https://wattwise.test${path}`), {}, {})).status, 200);
+  }
+  assert.equal((await guard.fetch(new Request('https://wattwise.test/auth/start'), {}, {})).status, 401);
+  assert.deepEqual(seen, ['/login', '/wattwise-logo-small.png', '/_next/static/app.js']);
+});

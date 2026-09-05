@@ -11,6 +11,7 @@ import { logoutFromAccess } from '@/lib/session-logout';
 import { hasUnsavedForms } from '@/lib/unsaved-forms';
 import { HouseholdAccessState } from './HouseholdAccessState';
 import { HouseholdForm } from './HouseholdForm';
+import { DisplayNameForm } from './DisplayNameForm';
 import { useHouseholdMemberships } from './use-household-memberships';
 import { WattWiseSidebar } from './WattWiseSidebar';
 
@@ -52,6 +53,12 @@ export function ProfilePage() {
   return <AccountShell active="profile" title="Profile · บัญชีและบ้านของคุณ">
     {context.phase !== 'ready' || !context.user ? <HouseholdAccessState embedded phase={context.phase === 'ready' ? 'error' : context.phase} error={context.error} onRefresh={() => void context.refresh()} /> : <>
       <UserCard user={context.user} />
+      <Card className="account-card account-form-card"><h2>ชื่อที่ใช้แสดง</h2>
+        <DisplayNameForm user={context.user} submitLabel="บันทึกชื่อ" onSaved={() => {
+          setMessage('บันทึกชื่อที่ใช้แสดงแล้ว');
+          void context.refresh();
+        }} />
+      </Card>
       <section aria-label="บ้านของคุณ"><div className="account-section-heading"><h2>บ้านของคุณ <span>({context.households.length})</span></h2><Button asChild><Link href="/households/new"><Plus aria-hidden="true" />เพิ่มบ้าน</Link></Button></div>
         {message && <p className="account-success" role="status">{message}</p>}
         {context.households.length === 0 && <Card className="account-card"><h3>ยังไม่มีบ้าน</h3><p className="account-muted">เพิ่มบ้านหลังแรกเพื่อเริ่มจัดการเครื่องใช้ไฟฟ้าและดูภาพรวมพลังงาน</p></Card>}

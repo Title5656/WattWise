@@ -16,10 +16,10 @@ const ownerHome = {
   role: 'owner',
 };
 
-test('dynamic identity prefers displayName and falls back to verified email', () => {
+test('dynamic identity prefers displayName and never exposes verified email as a label', () => {
   assert.equal(ui().displayUserName({ id: 'u1', email: 'owner@example.com', displayName: 'อรุณ' }), 'อรุณ');
-  assert.equal(ui().displayUserName({ id: 'u2', email: 'member@example.com', displayName: null }), 'member@example.com');
-  assert.equal(ui().displayUserName({ id: 'u3', email: 'blank@example.com', displayName: '   ' }), 'blank@example.com');
+  assert.equal(ui().displayUserName({ id: 'u2', email: 'member@example.com', displayName: null }), 'ผู้ใช้');
+  assert.equal(ui().displayUserName({ id: 'u3', email: 'blank@example.com', displayName: '   ' }), 'ผู้ใช้');
 });
 
 test('compatibility entry creates for zero, redirects one, and never chooses among many', () => {

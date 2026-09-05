@@ -49,7 +49,7 @@ export function AccountSessionBoundary({ children }: { children: ReactNode }) {
     <Button onClick={() => {
       // A fresh document must pass the Access gateway and reset this session boundary.
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      window.location.assign('/');
+      window.location.assign('/login');
     }}>เข้าสู่ระบบอีกครั้ง</Button>
   </Card></main>;
   return children;

@@ -55,6 +55,7 @@ export const users = sqliteTable('users', {
   publicId: text('public_id').notNull(),
   email: text('email').notNull(),
   displayName: text('display_name'),
+  displayNameConfirmedAt: integer('display_name_confirmed_at', { mode: 'timestamp' }),
   avatarUrl: text('avatar_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
