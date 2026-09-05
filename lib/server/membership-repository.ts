@@ -12,7 +12,7 @@ type MemberRow = HouseholdMember & { internalUserId: number };
 
 export async function listHouseholdMembers(db: D1Database, householdId: number): Promise<HouseholdMember[]> {
   const rows = await db.prepare(`SELECT users.public_id AS id, users.email AS email,
-      COALESCE(users.display_name, users.email) AS displayName, users.avatar_url AS avatarUrl,
+      COALESCE(NULLIF(trim(users.display_name), ''), 'ผู้ใช้') AS displayName, users.avatar_url AS avatarUrl,
       household_members.role AS role
     FROM household_members
     INNER JOIN users ON users.id = household_members.user_id
@@ -30,7 +30,7 @@ export async function findHouseholdMember(
   userPublicId: string,
 ): Promise<MemberRow | null> {
   const rows = await db.prepare(`SELECT users.id AS internalUserId, users.public_id AS id, users.email AS email,
-      COALESCE(users.display_name, users.email) AS displayName, users.avatar_url AS avatarUrl,
+      COALESCE(NULLIF(trim(users.display_name), ''), 'ผู้ใช้') AS displayName, users.avatar_url AS avatarUrl,
       household_members.role AS role
     FROM household_members
     INNER JOIN users ON users.id = household_members.user_id
