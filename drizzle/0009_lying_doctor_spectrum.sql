@@ -51,18 +51,3 @@ CREATE UNIQUE INDEX `idx_legacy_cutover_sources_kind_key` ON `legacy_cutover_sou
 CREATE UNIQUE INDEX `idx_legacy_cutover_sources_household` ON `legacy_cutover_sources` (`household_id`);--> statement-breakpoint
 CREATE INDEX `idx_legacy_cutover_sources_status` ON `legacy_cutover_sources` (`verification_status`);
 --> statement-breakpoint
-CREATE TRIGGER `household_claim_tokens_consume`
-AFTER UPDATE OF `consumed_at` ON `household_claim_tokens`
-WHEN OLD.`consumed_at` IS NULL AND NEW.`consumed_at` IS NOT NULL
-BEGIN
-	INSERT INTO `household_members` (`household_id`, `user_id`, `role`, `created_at`, `updated_at`)
-	SELECT `household_id`, NEW.`claimed_by_user_id`, 'owner', NEW.`consumed_at`, NEW.`consumed_at`
-	FROM `legacy_cutover_sources`
-	WHERE `id` = NEW.`source_id` AND `verification_status` = 'verified';
-	UPDATE `households` SET `status` = 'active', `updated_at` = NEW.`consumed_at`
-	WHERE `id` = (SELECT `household_id` FROM `legacy_cutover_sources` WHERE `id` = NEW.`source_id`)
-		AND `status` = 'quarantined' AND changes() = 1;
-	UPDATE `legacy_cutover_sources`
-	SET `verification_status` = 'claimed', `claimed_at` = NEW.`consumed_at`, `updated_at` = NEW.`consumed_at`
-	WHERE `id` = NEW.`source_id` AND changes() = 1;
-END;

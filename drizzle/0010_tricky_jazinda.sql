@@ -35,26 +35,6 @@ ALTER TABLE `legacy_cutover_sources` ADD `source_drift` integer DEFAULT false NO
 ALTER TABLE `legacy_cutover_sources` ADD `verification_epoch` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE `legacy_cutover_sources` ADD `sealed_at` integer;
 --> statement-breakpoint
-DROP TRIGGER `household_claim_tokens_consume`;
---> statement-breakpoint
-CREATE TRIGGER `household_claim_tokens_consume`
-AFTER UPDATE OF `consumed_at` ON `household_claim_tokens`
-WHEN OLD.`consumed_at` IS NULL AND NEW.`consumed_at` IS NOT NULL
-BEGIN
-	INSERT INTO `household_members` (`household_id`, `user_id`, `role`, `created_at`, `updated_at`)
-	SELECT `household_id`, NEW.`claimed_by_user_id`, 'owner', NEW.`consumed_at`, NEW.`consumed_at`
-	FROM `legacy_cutover_sources`
-	WHERE `id` = NEW.`source_id` AND `verification_status` = 'verified'
-		AND `source_drift` = 0 AND `verification_epoch` = NEW.`verification_epoch`
-		AND `target_checksum` = NEW.`target_checksum` AND `sealed_at` IS NOT NULL;
-	UPDATE `households` SET `status` = 'active', `updated_at` = NEW.`consumed_at`
-	WHERE `id` = (SELECT `household_id` FROM `legacy_cutover_sources` WHERE `id` = NEW.`source_id`)
-		AND `status` = 'quarantined' AND changes() = 1;
-	UPDATE `legacy_cutover_sources`
-	SET `verification_status` = 'claimed', `claimed_at` = NEW.`consumed_at`, `updated_at` = NEW.`consumed_at`
-	WHERE `id` = NEW.`source_id` AND changes() = 1;
-END;
---> statement-breakpoint
 CREATE TRIGGER `legacy_cutover_manifest_rows_no_update`
 BEFORE UPDATE ON `legacy_cutover_manifest_rows`
 WHEN EXISTS (SELECT 1 FROM `legacy_cutover_sources`

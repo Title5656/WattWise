@@ -286,7 +286,8 @@ export async function claimQuarantinedHousehold(
     throw new HouseholdClaimNotFoundError();
   }
   const tokenHash = await sha256(token);
-  const result = await db.prepare(`UPDATE household_claim_tokens
+  const [consumeResult, memberResult, householdResult, sourceResult] = await db.batch([
+    db.prepare(`UPDATE household_claim_tokens
     SET consumed_at = ?, claimed_by_user_id = ?
     WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?
       AND EXISTS (
@@ -301,9 +302,36 @@ export async function claimQuarantinedHousehold(
           AND households.status = 'quarantined'
           AND NOT EXISTS (SELECT 1 FROM household_members
             WHERE household_members.household_id = households.id)
-      )`)
-    .bind(now, userId, tokenHash, now).run();
-  if (Number(result.meta.changes) !== 1) throw new HouseholdClaimNotFoundError();
+      )`).bind(now, userId, tokenHash, now),
+    db.prepare(`INSERT INTO household_members (household_id, user_id, role, created_at, updated_at)
+      SELECT legacy_cutover_sources.household_id, ?, 'owner', ?, ?
+      FROM household_claim_tokens
+      INNER JOIN legacy_cutover_sources ON legacy_cutover_sources.id = household_claim_tokens.source_id
+      INNER JOIN households ON households.id = legacy_cutover_sources.household_id
+      WHERE household_claim_tokens.token_hash = ? AND household_claim_tokens.claimed_by_user_id = ?
+        AND household_claim_tokens.consumed_at = ? AND households.status = 'quarantined'
+        AND NOT EXISTS (SELECT 1 FROM household_members WHERE household_members.household_id = households.id)`)
+      .bind(userId, now, now, tokenHash, userId, now),
+    db.prepare(`UPDATE households SET status = 'active', updated_at = ?
+      WHERE status = 'quarantined' AND id = (
+        SELECT legacy_cutover_sources.household_id FROM household_claim_tokens
+        INNER JOIN legacy_cutover_sources ON legacy_cutover_sources.id = household_claim_tokens.source_id
+        WHERE household_claim_tokens.token_hash = ? AND household_claim_tokens.claimed_by_user_id = ?
+          AND household_claim_tokens.consumed_at = ?
+      ) AND EXISTS (SELECT 1 FROM household_members
+        WHERE household_members.household_id = households.id AND user_id = ? AND role = 'owner')`)
+      .bind(now, tokenHash, userId, now, userId),
+    db.prepare(`UPDATE legacy_cutover_sources
+      SET verification_status = 'claimed', claimed_at = ?, updated_at = ?
+      WHERE verification_status = 'verified' AND id = (
+        SELECT source_id FROM household_claim_tokens
+        WHERE token_hash = ? AND claimed_by_user_id = ? AND consumed_at = ?
+      ) AND EXISTS (SELECT 1 FROM households
+        WHERE households.id = legacy_cutover_sources.household_id AND status = 'active')`)
+      .bind(now, now, tokenHash, userId, now),
+  ]);
+  if ([consumeResult, memberResult, householdResult, sourceResult]
+    .some((result) => Number(result.meta.changes) !== 1)) throw new HouseholdClaimNotFoundError();
   const rows = await db.prepare(`SELECT households.public_id AS publicId
     FROM household_claim_tokens
     INNER JOIN legacy_cutover_sources ON legacy_cutover_sources.id = household_claim_tokens.source_id
