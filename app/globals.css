@@ -1,8 +1,8 @@
 @import 'tailwindcss';
 
-/* A household energy worksheet: one surface, one accent, real data. */
-:root{--bg:#f7f8fa;--panel:#fff;--text:#202c32;--muted:#5f6d74;--line:#dce2e5;--green:#17675c;--lime:#17675c;--blue:#17675c;--amber:#986923;--violet:#657780;--text-caption:12px;--text-body:14px;--text-section:20px}
-@theme inline{--color-primary:var(--green);--color-primary-foreground:#fff;--color-background:var(--panel);--color-accent:#eaf2f0;--color-accent-foreground:var(--green);--color-ring:var(--green);--color-border:var(--line)}
+/* 60% light surfaces, 30% evergreen and mint, 10% amber emphasis. */
+:root{--bg:#f0f6f3;--panel:#fff;--text:#163c33;--muted:#526d64;--line:#ccded5;--green:#11664e;--lime:#dcf0e5;--blue:#11664e;--amber:#f3ae48;--violet:#526d64;--forest:#103f33;--mint:#deeee5;--accent-ink:#38250c;--text-caption:12px;--text-body:14px;--text-section:20px}
+@theme inline{--color-primary:var(--amber);--color-primary-foreground:var(--accent-ink);--color-background:var(--panel);--color-accent:var(--mint);--color-accent-foreground:var(--green);--color-ring:var(--green);--color-border:var(--line)}
 *{box-sizing:border-box}
 html{scroll-padding-top:100px}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-noto-sans-thai),system-ui,sans-serif;font-size:16px;line-height:1.65}
@@ -23,7 +23,7 @@ small{font-size:var(--text-caption)}
 input,select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid #aebbc1;border-radius:5px;background:#fff;color:var(--text)}
 [data-slot=button]{min-height:44px;height:auto;white-space:normal;border-radius:5px;font-size:14px;line-height:1.5;transition:background .15s,color .15s}
 [data-slot=button]:active:not(:disabled){transform:translateY(1px)}
-[data-slot=button].bg-primary{color:#fff}
+[data-slot=button].bg-primary{color:var(--accent-ink)}
 [data-slot=button].border{border-color:#b9c5ca}
 [data-slot=card]{border-radius:0;box-shadow:none}
 .kicker{margin-bottom:8px;color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.04em}
@@ -138,7 +138,7 @@ input,select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border
 .usage-value,.usage-time{font-size:12px;fill:var(--muted)}
 .insight-card{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:32px;padding-top:24px;border-top:1px solid var(--line)}
 .insight-card p{margin-top:6px;color:var(--muted);font-size:14px}
-.insight-action{min-height:44px;font-size:var(--text-body)}
+.insight-action{min-height:44px;font-size:var(--text-body);background:var(--panel)}
 
 /* Builder: compact totals, an appliance index, and a generous editing surface. */
 .builder-header>div>span{display:block;margin-top:8px;color:var(--muted);font-size:14px}
@@ -346,6 +346,71 @@ input,select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border
 .onboarding-card>p{color:var(--muted);margin:12px 0 28px}
 .onboarding-loading{padding:20px 0}
 
+/* Shared color hierarchy across dashboard, builder, accounts, and sign-in. */
+.sidebar{background:var(--forest);border-bottom-color:var(--forest);color:#fff}
+.side-nav a,.sidebar-account{color:#c7dfd3}
+.side-nav a:hover,.side-nav a.active{color:var(--amber)}
+.side-nav a.active{border-bottom-color:var(--amber)}
+[data-slot=button],input,select{border-radius:9px}
+[data-slot=button].bg-primary:hover:not(:disabled){background:#e99b30}
+.energy-overview{padding:30px;border:1px solid var(--line);border-radius:20px;background:var(--mint)}
+.estimate-value strong{color:var(--forest);font-weight:600}
+.bill-estimate>a{padding:8px 14px;border-radius:8px;background:var(--forest);color:#fff}
+.estimate-details{border-color:#b6cec1}
+.energy-facts{border-color:#b6cec1}
+.devices-card,.bill-card{padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+.overview-grid{gap:24px}
+.device-copy>span{height:5px;border-radius:4px;background:var(--mint);overflow:hidden}
+.device-copy>span>i{border-radius:4px}
+.bill-legend i,.monthly-bars i{background:#b7d5c5}
+.bill-legend .actual,.monthly-bars i.actual{background:var(--amber)}
+.monthly-bars i{border-radius:5px 5px 0 0}
+.load-card{padding:28px;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 8px 28px #103f3306}
+.load-card>header{gap:16px;align-items:flex-start}
+.load-period{padding:7px 12px;border-radius:7px;background:var(--mint);color:var(--green);font-size:13px;white-space:nowrap}
+.load-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:24px 0}
+.load-summary>span{padding:16px 20px;border-radius:12px;background:var(--bg);font-size:13px}
+.load-summary b{font-size:28px;font-weight:600;letter-spacing:-.025em}
+.load-summary small{font-size:14px;letter-spacing:0}
+.load-summary>.load-peak{background:#fff1d9;color:#805015;box-shadow:inset 3px 0 var(--amber)}
+.load-summary>.load-peak b{color:#805015}
+.load-chart-legend{display:flex;align-items:center;flex-wrap:wrap;gap:12px 24px;margin:0 0 8px;font-size:12px;color:var(--muted)}
+.load-chart-legend>span{display:flex;align-items:center;gap:8px}
+.load-chart-legend i{width:18px;height:3px;background:var(--green);border-radius:2px}
+.load-chart-legend i.average{height:0;background:none;border-top:2px dashed #a76a19}
+.load-chart-legend>small{margin-left:auto}
+.usage-line-chart svg{min-width:680px;max-height:none}
+.usage-grid{stroke-dasharray:3 6;stroke:var(--line)}
+.usage-line{stroke-width:3;vector-effect:non-scaling-stroke}
+.usage-average{stroke:#a76a19;stroke-width:1.5;stroke-dasharray:6 6;opacity:.8}
+.usage-hit{fill:transparent}
+.usage-point{stroke-width:2;transition:fill .16s}
+.usage-peak-halo{fill:var(--amber);opacity:.25}
+.usage-sample.is-peak .usage-point{fill:var(--amber);stroke:#a76a19}
+.usage-value{opacity:0;fill:var(--forest);font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:5px;stroke-linejoin:round;transition:opacity .16s}
+.usage-sample.is-peak .usage-value,.usage-sample:hover .usage-value,.usage-sample:focus .usage-value{opacity:1}
+.usage-sample:focus{outline:none}
+.usage-sample:focus .usage-point{stroke:var(--forest);stroke-width:4;fill:var(--amber)}
+.usage-series{animation:load-reveal .65s ease-out both;transform-origin:center bottom}
+@keyframes load-reveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.insight-card{background:var(--mint);border:0;border-radius:14px;padding:24px}
+.builder-summary{padding:24px;background:var(--mint);border:1px solid var(--line);border-radius:16px}
+.builder-bill-breakdown{background:var(--mint);border-radius:10px}
+.builder-home-item{background:var(--panel);border-color:var(--line);border-radius:14px}
+.builder-catalog{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.builder-tabs .selected,.builder-period-chip.selected{background:var(--mint)}
+.builder-appliance>button{background:var(--amber);color:var(--accent-ink)}
+.builder-appliance>button:hover{background:#e99b30}
+.account-card,.household-choice-card,.household-state-card{padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.account-households,.household-choice-grid{gap:14px}
+.account-heading{border-bottom-color:var(--green)}
+.login-card{border-radius:20px;border-top:4px solid var(--amber);box-shadow:0 12px 40px #103f3308}
+.login-metrics{padding:0 20px;border-radius:14px;background:var(--mint);border-top:0}
+.login-metrics>span:last-child{border:0}
+.google-signin{background:var(--amber);color:var(--accent-ink);border-radius:9px}
+.google-signin:hover{background:#e99b30}
+.onboarding-card{padding:28px;background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--amber);border-radius:16px}
+
 @media (max-width:1100px){
   .sidebar{gap:24px;padding-inline:24px}
   .side-nav{gap:18px}
@@ -364,7 +429,7 @@ input,select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border
 @media (max-width:800px){
   .builder-workspace{display:block}
   .builder-empty-add{display:inline-flex}
-  .builder-catalog{position:static;border:0;padding:0}
+  .builder-catalog{position:static;padding:20px}
   .builder-catalog-list{max-height:none}
   .builder-mobile-nav{position:sticky;top:76px;z-index:3;display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:24px;background:var(--bg)}
   .builder-mobile-nav button{flex:1;min-height:48px;padding:12px 8px;border:0;border-bottom:3px solid transparent;background:transparent;color:var(--muted);font-size:14px}
@@ -393,7 +458,7 @@ input,select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border
   .builder-identity{margin:0 0 22px}
   .builder-identity .header-actions{width:100%;flex-wrap:wrap}
   .builder-mobile-nav{top:0}
-  .energy-overview{grid-template-columns:1fr;gap:24px;padding:24px 0;margin-bottom:28px}
+  .energy-overview{grid-template-columns:1fr;gap:24px;padding:22px;margin-bottom:28px}
   .estimate-details{border-left:0;padding:20px 0 0;border-top:1px solid var(--line)}
   .estimate-value strong{font-size:64px}
   .estimate-range>b{font-size:24px}
@@ -402,12 +467,15 @@ input,select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border
   .energy-facts small{display:block}
   .overview-grid{display:flex;flex-direction:column;gap:28px}
   .devices-card{order:-1;width:100%}
-  .bill-card{padding:24px 0 0;border-left:0;border-top:1px solid var(--line);width:100%}
+  .bill-card{padding:20px;width:100%}
   .section-heading{gap:12px}
   .device-row{grid-template-columns:40px minmax(0,1fr) auto;gap:8px}
   .device-product-thumb{width:40px;height:40px}
   .device-usage b{font-size:13px}
-  .load-summary{gap:18px;justify-content:space-between}
+  .load-card{padding:20px 16px}
+  .load-summary{gap:8px}
+  .load-summary>span{padding:12px 10px;font-size:12px}
+  .load-chart-legend>small{margin-left:0}
   .load-summary b{font-size:18px}
   .insight-card,.dashboard-empty{flex-direction:column;align-items:flex-start;gap:16px}
   .builder-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 0}
@@ -421,7 +489,7 @@ input,select{max-width:100%;min-width:0;min-height:44px;padding:10px 12px;border
   .builder-item-energy{grid-column:auto}
   .builder-panel-heading{flex-wrap:wrap}
   .account-heading{margin-bottom:20px}
-  .account-card{padding:20px 0}
+  .account-card{padding:20px}
   .account-user{align-items:flex-start}
   .account-section-heading{flex-wrap:wrap}
   .account-actions [data-slot=button]{flex-grow:1}

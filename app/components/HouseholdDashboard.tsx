@@ -20,6 +20,7 @@ import {
 import { createLatestRequestTracker, isAbortError } from '@/lib/latest-request';
 import { formatBillingMonthLabel, getBillingMonth, selectRecentRecords, type MonthlyEnergyRecord } from '@/lib/monthly-history';
 import { HouseholdAccessState } from './HouseholdAccessState';
+import { DailyLoadChart } from './DailyLoadChart';
 import { HouseholdIdentityBar } from './HouseholdIdentityBar';
 import { WattWiseSidebar } from './WattWiseSidebar';
 import { useHouseholdContext } from './use-household-memberships';
@@ -129,7 +130,6 @@ function HouseholdDashboardContent({
   ])), [summary.itemCalculations]);
   const values = useMemo(() => calculateDailyLoadProfile(homeItems), [homeItems]);
   const peak = Math.max(...values, 0);
-  const chartPeak = Math.max(peak, 0.01);
   const averageLoad = summary.dailyKwh / 24;
   const hasEstimatedRange = !homeLoading && homeItems.length > 0;
 
@@ -246,22 +246,11 @@ function HouseholdDashboardContent({
 
       </section>
 
-      {homeItems.length > 0 && <Card className="load-card" id="live-load"><header><div><p className="kicker">ช่วงเวลาการใช้ไฟ</p><h2>โหลดไฟภายในบ้าน</h2><span>ประมาณการจากช่วงเวลาที่ตั้งไว้ · วันทั่วไป</span></div></header><div className="load-summary"><span>โหลดติดตั้ง <b>{formatNumber(summary.ratedLoadKw, 2)} <small>kW</small></b></span><span>สูงสุดโดยประมาณ <b>{formatNumber(peak, 2)} <small>kW</small></b></span><span>โหลดเฉลี่ย <b>{formatNumber(averageLoad, 2)} <small>kW</small></b></span></div><div className="usage-line-chart" aria-label="กราฟประมาณการโหลดไฟตามช่วงเวลา">
-        <svg viewBox="0 0 660 210" role="img" aria-label="โหลดไฟโดยประมาณ (kW)">
-          {[0, 0.5, 1].map((fraction) => <line key={fraction} className="usage-grid" x1="28" x2="632" y1={170 - fraction * 140} y2={170 - fraction * 140} />)}
-          <polyline className="usage-line" points={values.map((value, index) => `${28 + index * 604 / Math.max(values.length - 1, 1)},${170 - value / chartPeak * 140}`).join(' ')} />
-          {values.map((value, index) => {
-            const x = 28 + index * 604 / Math.max(values.length - 1, 1);
-            const y = 170 - value / chartPeak * 140;
-            const time = `${String(index * 2).padStart(2, '0')}:00`;
-            return <g key={time}>
-              <circle className="usage-point" cx={x} cy={y} r="4" tabIndex={0} aria-label={`${time}: ${value.toFixed(1)} kW`}><title>{`${time}: ${value.toFixed(1)} kW`}</title></circle>
-              <text className="usage-value" x={x} y={y - 12} textAnchor="middle">{value.toFixed(1)}</text>
-              <text className="usage-time" x={x} y="202" textAnchor="middle">{time}</text>
-            </g>;
-          })}
-        </svg>
-      </div></Card>}
+      {homeItems.length > 0 && <Card className="load-card" id="live-load">
+        <header><div><p className="kicker">ช่วงเวลาการใช้ไฟ</p><h2>โหลดไฟภายในบ้าน</h2><span>ประมาณการจากช่วงเวลาที่ตั้งไว้ · วันทั่วไป</span></div><span className="load-period">24 ชั่วโมง</span></header>
+        <div className="load-summary"><span>โหลดติดตั้ง <b>{formatNumber(summary.ratedLoadKw, 2)} <small>kW</small></b></span><span className="load-peak">สูงสุดโดยประมาณ <b>{formatNumber(peak, 2)} <small>kW</small></b></span><span>โหลดเฉลี่ย <b>{formatNumber(averageLoad, 2)} <small>kW</small></b></span></div>
+        <DailyLoadChart values={values} average={averageLoad} />
+      </Card>}
 
       <section className="insight-card"><div><h3>ลองปรับเวลาใช้งาน แล้วเทียบค่าไฟอีกครั้ง</h3><p>ค่าประมาณอิงจากอุปกรณ์และรูปแบบการใช้งานที่คุณกำหนด</p></div><Button asChild variant="outline" className="insight-action"><Link href={myHomePath}>ปรับใน My Home <ArrowRight aria-hidden="true" /></Link></Button></section>
       </>}
