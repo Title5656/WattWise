@@ -143,15 +143,28 @@ jobs:
             --write-out "%{http_code}" \
             "$PRODUCTION_URL/")"
 
-          test "$html_http_code" = 200
-          grep -Eiq '^content-type: *text/html' "$html_headers"
+          if [[ "$html_http_code" != 200 ]]; then
+            echo "::error::Authenticated HTML returned HTTP $html_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type: *text/html' "$html_headers"; then
+            html_content_type="$(grep -Ei '^content-type:' "$html_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Authenticated response is not HTML ($html_content_type)"
+            exit 1
+          fi
 
           bootstrap_tag="$(grep -Eio '<script[^>]*>' "$html_body" \
             | grep -Ei 'type="module"' \
             | grep -Ei 'src="[^"]+"' \
             | grep -Ei 'crossorigin="use-credentials"' \
-            | head -n 1)"
-          test -n "$bootstrap_tag"
+            | sed -n '1p' || true)"
+          if [[ -z "$bootstrap_tag" ]]; then
+            echo "::error::Authenticated HTML has no credentialed module bootstrap script"
+            grep -Eio '<script[^>]*>' "$html_body" \
+              | grep -Ei 'type="module"' \
+              | sed -n '1,5p' || true
+            exit 1
+          fi
 
           bootstrap_path="$(printf '%s' "$bootstrap_tag" | sed -E 's/.*src="([^"]+)".*/\1/')"
           case "$bootstrap_path" in
@@ -168,8 +181,15 @@ jobs:
             --write-out "%{http_code}" \
             "$PRODUCTION_URL$bootstrap_path")"
 
-          test "$bootstrap_http_code" = 200
-          grep -Eiq '^content-type:.*javascript' "$bootstrap_headers"
+          if [[ "$bootstrap_http_code" != 200 ]]; then
+            echo "::error::Bootstrap asset returned HTTP $bootstrap_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type:.*javascript' "$bootstrap_headers"; then
+            bootstrap_content_type="$(grep -Ei '^content-type:' "$bootstrap_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Bootstrap asset is not JavaScript ($bootstrap_content_type)"
+            exit 1
+          fi
 
       - name: Smoke-test production catalog API
         env:
