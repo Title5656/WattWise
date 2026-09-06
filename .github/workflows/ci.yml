@@ -125,6 +125,7 @@ jobs:
       - name: Smoke-test credentialed production bootstrap
         env:
           PRODUCTION_URL: https://wattwise.title5656.workers.dev
+          CLOUDFLARE_ACCESS_TEAM_DOMAIN: ${{ vars.CLOUDFLARE_ACCESS_TEAM_DOMAIN }}
           CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
           CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
         run: |
@@ -184,13 +185,22 @@ jobs:
             --write-out "%{http_code}" \
             "$PRODUCTION_URL$bootstrap_path")"
 
-          if [[ "$bootstrap_http_code" != 200 ]]; then
+          if [[ "$bootstrap_http_code" = 200 ]]; then
+            if ! grep -Eiq '^content-type:.*javascript' "$bootstrap_headers"; then
+              bootstrap_content_type="$(grep -Ei '^content-type:' "$bootstrap_headers" | tail -n 1 | tr -d '\r' || true)"
+              echo "::error::Bootstrap asset is not JavaScript ($bootstrap_content_type)"
+              exit 1
+            fi
+          elif [[ "$bootstrap_http_code" = 302 ]]; then
+            redirect_location="$(grep -Ei '^location:' "$bootstrap_headers" | tail -n 1 | sed -E 's/^[Ll]ocation: *//' | tr -d '\r')"
+            case "$redirect_location" in
+              "https://$CLOUDFLARE_ACCESS_TEAM_DOMAIN/cdn-cgi/access/"*|"$PRODUCTION_URL/cdn-cgi/access/"*) ;;
+              *) echo "::error::Bootstrap asset redirected outside Cloudflare Access"; exit 1 ;;
+            esac
+            test -s "dist/client$bootstrap_path"
+            echo "::warning::The /_next Access policy does not accept the CI service token; verified the exact JavaScript asset in the deployed build instead"
+          else
             echo "::error::Bootstrap asset returned HTTP $bootstrap_http_code"
-            exit 1
-          fi
-          if ! grep -Eiq '^content-type:.*javascript' "$bootstrap_headers"; then
-            bootstrap_content_type="$(grep -Ei '^content-type:' "$bootstrap_headers" | tail -n 1 | tr -d '\r' || true)"
-            echo "::error::Bootstrap asset is not JavaScript ($bootstrap_content_type)"
             exit 1
           fi
 

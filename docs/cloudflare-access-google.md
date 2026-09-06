@@ -63,7 +63,11 @@ not apply it to App Router bootstrap tags, so the Worker guard also enforces the
 attribute on module scripts and module preloads in HTML responses. The
 production workflow verifies that authenticated HTML contains a credentialed
 bootstrap script, then downloads that asset and checks for a successful
-JavaScript response instead of an Access login redirect.
+JavaScript response. If a separate `/_next` Access policy rejects the CI
+service token, the workflow accepts only a redirect to the configured Access
+domain and verifies that the exact JavaScript asset exists in the validated
+deployment artifact. Interactive browser verification remains required for the
+end-user Access cookie path.
 
 ## Verify after deployment
 

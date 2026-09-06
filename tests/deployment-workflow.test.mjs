@@ -70,6 +70,8 @@ test('production deployment verifies credentialed HTML bootstrap assets', async 
   assert.match(workflow, /Authenticated HTML has no credentialed module bootstrap script/);
   assert.match(workflow, /--cookie-jar "\$access_cookies"/);
   assert.match(workflow, /--cookie "\$access_cookies"/);
+  assert.match(workflow, /The \/_next Access policy does not accept the CI service token/);
+  assert.match(workflow, /test -s "dist\/client\$bootstrap_path"/);
 });
 
 test('D1 migration bootstrap is additive and idempotent', async () => {
