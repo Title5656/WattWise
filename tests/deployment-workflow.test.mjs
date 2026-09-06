@@ -58,20 +58,55 @@ test('production artifacts use current artifact actions', async () => {
   assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/);
 });
 
-test('production deployment verifies credentialed HTML bootstrap assets', async () => {
+test('production deployment rejects Access redirects for public app assets and verifies onboarding', async () => {
   const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+
+  const bootstrapFetch = workflow.match(
+    /bootstrap_http_code="\$\(curl(?<block>[\s\S]*?)"\$PRODUCTION_URL\$bootstrap_path"\)"/,
+  )?.groups?.block;
+  const stylesheetFetch = workflow.match(
+    /stylesheet_http_code="\$\(curl(?<block>[\s\S]*?)"\$PRODUCTION_URL\$stylesheet_path"\)"/,
+  )?.groups?.block;
+
+  assert.ok(bootstrapFetch, 'bootstrap asset fetch block is missing');
+  assert.ok(stylesheetFetch, 'stylesheet asset fetch block is missing');
 
   assert.match(workflow, /Smoke-test credentialed production bootstrap/);
   assert.match(workflow, /type="module"/);
   assert.match(workflow, /crossorigin="use-credentials"/);
   assert.match(workflow, /bootstrap_path/);
+  assert.match(workflow, /stylesheet_path/);
   assert.match(workflow, /content-type:.*javascript/i);
+  assert.match(workflow, /content-type:.*css/i);
   assert.match(workflow, /bootstrap_http_code/);
   assert.match(workflow, /Authenticated HTML has no credentialed module bootstrap script/);
-  assert.match(workflow, /--cookie-jar "\$access_cookies"/);
-  assert.match(workflow, /--cookie "\$access_cookies"/);
-  assert.match(workflow, /The \/_next Access policy does not accept the CI service token/);
-  assert.match(workflow, /test -s "dist\/client\$bootstrap_path"/);
+  assert.match(workflow, /\/onboarding\?returnTo=%2F/);
+  assert.match(workflow, /\/api\/me/);
+  assert.match(workflow, /anonymous_me_http_code/);
+  assert.match(workflow, /\$PRODUCTION_URL\/login/);
+  assert.match(workflow, /\$PRODUCTION_URL\/wattwise-logo-small\.png/);
+  assert.doesNotMatch(bootstrapFetch, /access_headers|CF-Access|cookie|--location/i);
+  assert.doesNotMatch(stylesheetFetch, /access_headers|CF-Access|cookie|--location/i);
+  assert.match(workflow, /if \[\[ "\$bootstrap_http_code" != 200 \]\]/);
+  assert.match(workflow, /if ! grep -Eiq '\^content-type:\.\*javascript' "\$bootstrap_headers"/);
+  assert.match(workflow, /if \[\[ "\$stylesheet_http_code" != 200 \]\]/);
+  assert.match(workflow, /if ! grep -Eiq '\^content-type:\.\*css' "\$stylesheet_headers"/);
+  assert.doesNotMatch(workflow, /bootstrap_http_code"?\s*(?:=|==)\s*"?302/);
+  assert.doesNotMatch(workflow, /stylesheet_http_code"?\s*(?:=|==)\s*"?302/);
+  assert.doesNotMatch(workflow, /The \/_next Access policy does not accept the CI service token/);
+});
+
+test('Cloudflare Access guide documents the exact anonymous exceptions', async () => {
+  const guide = await readFile(new URL('../docs/cloudflare-access-google.md', import.meta.url), 'utf8');
+
+  assert.match(guide, /wattwise\.title5656\.workers\.dev\/login/);
+  assert.match(guide, /wattwise\.title5656\.workers\.dev\/_next(?:\/\*)?/);
+  assert.match(guide, /wattwise\.title5656\.workers\.dev\/wattwise-logo-small\.png/);
+  assert.match(guide, /Bypass[\s\S]*Everyone/i);
+  assert.match(guide, /every other path[\s\S]*main Access application/i);
+  assert.match(guide, /main protected application(?:'s|’s) `aud` tag/i);
+  assert.match(guide, /Service\s+Auth policy[\s\S]*main protected application/i);
+  assert.doesNotMatch(guide, /existing logo URL is Access-protected/i);
 });
 
 test('D1 migration bootstrap is additive and idempotent', async () => {

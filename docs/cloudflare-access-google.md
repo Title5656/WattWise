@@ -16,20 +16,30 @@ This branding applies to the organization's Access login pages. Both existing
 Access applications are for WattWise. Identity providers, application policies,
 session duration, and automatic redirects were preserved and checked afterward.
 No external configuration blocker remains. A fresh interactive sign-in was not
-performed. A logo was omitted because the existing logo URL is Access-protected
-and could require authentication before the login page can display it.
+performed. The app logo is served through the public-assets Bypass application,
+so it can be added to Access branding without requiring an existing session.
 
 ## One-time Cloudflare setup
 
 1. In Cloudflare Zero Trust, add Google as an identity provider.
-2. Create an Access application for `wattwise.title5656.workers.dev` and cover
-   every path.
+2. Create the main Access application for `wattwise.title5656.workers.dev` and
+   cover every path.
 3. Add an explicit Allow policy for the intended Google users or domain. Do not
    create an allow-all Google policy.
-4. Copy the Access team domain (for example, `team.cloudflareaccess.com`) and
-   the application audience (`aud`) tag.
-5. Create a short-lived service token for CI and add a `Service Auth` policy
-   for that token on this application.
+4. Create a second Access application with these exact destinations:
+   `wattwise.title5656.workers.dev/login`,
+   `wattwise.title5656.workers.dev/_next` (the path-prefix match covers all
+   `/_next/*` descendants), and
+   `wattwise.title5656.workers.dev/wattwise-logo-small.png`. Give it a
+   **Bypass** policy with an **Everyone** selector. Do not use Allow for these
+   destinations.
+5. Keep every other path on the main Access application; in particular, never
+   add `/api/*`, `/onboarding`, or the site root to the Bypass application.
+6. Copy the Access team domain (for example, `team.cloudflareaccess.com`) and
+   the main protected application's `aud` tag.
+7. Create a short-lived service token for CI and add the CI token's Service
+   Auth policy to the main protected application, not the public-assets
+   application.
 
 ## GitHub Actions configuration
 
@@ -49,8 +59,15 @@ credentials as Access headers and do not print them.
 
 ## Credentialed browser bootstrap
 
-The entire production hostname is protected by Cloudflare Access, including
-the JavaScript files required to hydrate the app. Keep
+The application pages and APIs are protected by Cloudflare Access. A separate
+Access application covers the exact `/login`, `/_next` path prefix, and
+`/wattwise-logo-small.png` destinations; its
+`Public login assets` policy must use the **Bypass** action with an Everyone
+selector. `Allow Everyone` is not equivalent: it still creates a second Access
+authentication boundary and audience for the same hostname, which can redirect
+uncached route chunks and leave first-time users on server-rendered loading UI.
+
+Keep
 `crossOrigin: 'use-credentials'` in `next.config.ts` so Safari, Chrome, and
 other WebKit browsers on iOS and iPadOS send the `CF_Authorization` cookie when
 they load bootstrap scripts and module preloads. Removing this setting can
@@ -61,20 +78,21 @@ The membership lifecycle also sets `credentials: 'same-origin'` explicitly on
 both API requests. Vinext currently accepts the Next.js configuration but does
 not apply it to App Router bootstrap tags, so the Worker guard also enforces the
 attribute on module scripts and module preloads in HTML responses. The
-production workflow verifies that authenticated HTML contains a credentialed
-bootstrap script, then downloads that asset and checks for a successful
-JavaScript response. If a separate `/_next` Access policy rejects the CI
-service token, the workflow accepts only a redirect to the configured Access
-domain and verifies that the exact JavaScript asset exists in the validated
-deployment artifact. Interactive browser verification remains required for the
-end-user Access cookie path.
+production workflow verifies authenticated HTML and onboarding, then downloads
+the JavaScript bootstrap and stylesheet without Access credentials. Both public
+assets must return `200` with the expected content type; any Access redirect is
+a deployment failure. The same smoke test verifies that authenticated
+`/api/me` returns a complete user payload and that anonymous `/api/me` remains
+blocked. Interactive browser verification remains required for the end-user
+Access cookie path.
 
 ## Verify after deployment
 
 In a fresh browser profile, open the production hostname. Cloudflare Access
 should require Google sign-in before WattWise loads. After sign-in, the
 household routes should load normally. A request without Access credentials to
-`/api/me` must receive `401`.
+`/api/me` must receive an Access redirect or a `401`/`403` response, never
+application data.
 
 On Safari and Chrome for a supported iPhone or iPad, sign in with an account
 that belongs to two households. The household picker should appear within 10

@@ -125,7 +125,6 @@ jobs:
       - name: Smoke-test credentialed production bootstrap
         env:
           PRODUCTION_URL: https://wattwise.title5656.workers.dev
-          CLOUDFLARE_ACCESS_TEAM_DOMAIN: ${{ vars.CLOUDFLARE_ACCESS_TEAM_DOMAIN }}
           CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
           CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
         run: |
@@ -134,13 +133,60 @@ jobs:
             -H "CF-Access-Client-Secret: $CLOUDFLARE_ACCESS_CLIENT_SECRET"
           )
 
+          login_headers="$RUNNER_TEMP/wattwise-login-headers.txt"
+          login_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            --dump-header "$login_headers" \
+            --output "$RUNNER_TEMP/wattwise-login.html" \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL/login")"
+          if [[ "$login_http_code" != 200 ]]; then
+            echo "::error::Anonymous login page returned HTTP $login_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type: *text/html' "$login_headers"; then
+            login_content_type="$(grep -Ei '^content-type:' "$login_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Anonymous login response is not HTML ($login_content_type)"
+            exit 1
+          fi
+
+          logo_headers="$RUNNER_TEMP/wattwise-logo-headers.txt"
+          logo_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            --dump-header "$logo_headers" \
+            --output "$RUNNER_TEMP/wattwise-logo.png" \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL/wattwise-logo-small.png")"
+          if [[ "$logo_http_code" != 200 ]]; then
+            echo "::error::Anonymous logo returned HTTP $logo_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type: *image/' "$logo_headers"; then
+            logo_content_type="$(grep -Ei '^content-type:' "$logo_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Anonymous logo response is not an image ($logo_content_type)"
+            exit 1
+          fi
+
+          anonymous_me_headers="$RUNNER_TEMP/wattwise-anonymous-me-headers.txt"
+          anonymous_me_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            --dump-header "$anonymous_me_headers" \
+            --output /dev/null \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL/api/me")"
+          case "$anonymous_me_http_code" in
+            302|401|403) ;;
+            *)
+              echo "::error::Anonymous /api/me was not blocked (HTTP $anonymous_me_http_code)"
+              exit 1
+              ;;
+          esac
+
           html_headers="$RUNNER_TEMP/wattwise-html-headers.txt"
           html_body="$RUNNER_TEMP/wattwise.html"
-          access_cookies="$RUNNER_TEMP/wattwise-access-cookies.txt"
           html_http_code="$(curl --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors \
             --connect-timeout 10 --max-time 30 \
             "${access_headers[@]}" \
-            --cookie-jar "$access_cookies" \
             --dump-header "$html_headers" \
             --output "$html_body" \
             --write-out "%{http_code}" \
@@ -178,29 +224,90 @@ jobs:
           bootstrap_headers="$RUNNER_TEMP/wattwise-bootstrap-headers.txt"
           bootstrap_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
             --connect-timeout 10 --max-time 30 \
-            "${access_headers[@]}" \
-            --cookie "$access_cookies" \
             --dump-header "$bootstrap_headers" \
             --output "$RUNNER_TEMP/wattwise-bootstrap.js" \
             --write-out "%{http_code}" \
             "$PRODUCTION_URL$bootstrap_path")"
 
-          if [[ "$bootstrap_http_code" = 200 ]]; then
-            if ! grep -Eiq '^content-type:.*javascript' "$bootstrap_headers"; then
-              bootstrap_content_type="$(grep -Ei '^content-type:' "$bootstrap_headers" | tail -n 1 | tr -d '\r' || true)"
-              echo "::error::Bootstrap asset is not JavaScript ($bootstrap_content_type)"
-              exit 1
-            fi
-          elif [[ "$bootstrap_http_code" = 302 ]]; then
-            redirect_location="$(grep -Ei '^location:' "$bootstrap_headers" | tail -n 1 | sed -E 's/^[Ll]ocation: *//' | tr -d '\r')"
-            case "$redirect_location" in
-              "https://$CLOUDFLARE_ACCESS_TEAM_DOMAIN/cdn-cgi/access/"*|"$PRODUCTION_URL/cdn-cgi/access/"*) ;;
-              *) echo "::error::Bootstrap asset redirected outside Cloudflare Access"; exit 1 ;;
-            esac
-            test -s "dist/client$bootstrap_path"
-            echo "::warning::The /_next Access policy does not accept the CI service token; verified the exact JavaScript asset in the deployed build instead"
-          else
+          if [[ "$bootstrap_http_code" != 200 ]]; then
             echo "::error::Bootstrap asset returned HTTP $bootstrap_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type:.*javascript' "$bootstrap_headers"; then
+            bootstrap_content_type="$(grep -Ei '^content-type:' "$bootstrap_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Bootstrap asset is not JavaScript ($bootstrap_content_type)"
+            exit 1
+          fi
+
+          stylesheet_tag="$(grep -Eio '<link[^>]*>' "$html_body" \
+            | grep -Ei 'rel="stylesheet"' \
+            | grep -Ei 'href="[^"]+"' \
+            | sed -n '1p' || true)"
+          if [[ -z "$stylesheet_tag" ]]; then
+            echo "::error::Authenticated HTML has no stylesheet"
+            exit 1
+          fi
+          stylesheet_path="$(printf '%s' "$stylesheet_tag" | sed -E 's/.*href="([^"]+)".*/\1/')"
+          case "$stylesheet_path" in
+            /*) ;;
+            *) echo "Unexpected stylesheet path: $stylesheet_path" >&2; exit 1 ;;
+          esac
+
+          stylesheet_headers="$RUNNER_TEMP/wattwise-stylesheet-headers.txt"
+          stylesheet_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            --dump-header "$stylesheet_headers" \
+            --output "$RUNNER_TEMP/wattwise.css" \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL$stylesheet_path")"
+          if [[ "$stylesheet_http_code" != 200 ]]; then
+            echo "::error::Stylesheet returned HTTP $stylesheet_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type:.*css' "$stylesheet_headers"; then
+            stylesheet_content_type="$(grep -Ei '^content-type:' "$stylesheet_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Stylesheet asset is not CSS ($stylesheet_content_type)"
+            exit 1
+          fi
+
+          onboarding_headers="$RUNNER_TEMP/wattwise-onboarding-headers.txt"
+          onboarding_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            "${access_headers[@]}" \
+            --dump-header "$onboarding_headers" \
+            --output "$RUNNER_TEMP/wattwise-onboarding.html" \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL/onboarding?returnTo=%2F")"
+          if [[ "$onboarding_http_code" != 200 ]]; then
+            echo "::error::Authenticated onboarding returned HTTP $onboarding_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type: *text/html' "$onboarding_headers"; then
+            onboarding_content_type="$(grep -Ei '^content-type:' "$onboarding_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Authenticated onboarding response is not HTML ($onboarding_content_type)"
+            exit 1
+          fi
+
+          me_headers="$RUNNER_TEMP/wattwise-me-headers.txt"
+          me_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            "${access_headers[@]}" \
+            --dump-header "$me_headers" \
+            --output "$RUNNER_TEMP/wattwise-me.json" \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL/api/me")"
+          if [[ "$me_http_code" != 200 ]]; then
+            echo "::error::Authenticated /api/me returned HTTP $me_http_code"
+            exit 1
+          fi
+          if ! grep -Eiq '^content-type: *application/json' "$me_headers"; then
+            me_content_type="$(grep -Ei '^content-type:' "$me_headers" | tail -n 1 | tr -d '\r' || true)"
+            echo "::error::Authenticated /api/me response is not JSON ($me_content_type)"
+            exit 1
+          fi
+          if ! jq -e '.user.id and .user.email and (.user.needsDisplayName | type == "boolean")' \
+            "$RUNNER_TEMP/wattwise-me.json" > /dev/null; then
+            echo "::error::Authenticated /api/me response has an invalid user schema"
             exit 1
           fi
 
