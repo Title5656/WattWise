@@ -232,6 +232,12 @@ function HouseholdDashboardContent({
         <div className="estimate-details"><div className="estimate-range"><h2>ช่วงค่าไฟโดยประมาณ</h2><b>{hasEstimatedRange ? '฿' + formatNumber(summary.monthlyBillRange.low) + '–' + formatNumber(summary.monthlyBillRange.high) : '—'}</b><p>{hasEstimatedRange ? 'เมื่อการใช้งานจริงต่างจากที่ตั้งไว้ ±10%' : 'เพิ่มอุปกรณ์เพื่อดูช่วงค่าไฟ'}</p></div><dl className="energy-facts"><div><dt>พลังงานต่อเดือน</dt><dd>{formatNumber(summary.monthlyKwh, 1)} <small>kWh</small></dd></div><div><dt>พลังงานต่อวัน</dt><dd>{formatNumber(summary.dailyKwh, 1)} <small>kWh</small></dd></div><div><dt>เครื่องใช้ไฟฟ้า</dt><dd>{summary.totalUnits} <small>เครื่อง</small></dd></div></dl></div>
       </section>
 
+      {homeItems.length > 0 && <Card className="load-card" id="live-load">
+        <header><div><p className="kicker">ช่วงเวลาการใช้ไฟ</p><h2>โหลดไฟภายในบ้าน</h2><span>ประมาณการจากช่วงเวลาที่ตั้งไว้ · วันทั่วไป</span></div><span className="load-period">24 ชั่วโมง</span></header>
+        <div className="load-summary"><span>โหลดติดตั้ง <b>{formatNumber(summary.ratedLoadKw, 2)} <small>kW</small></b></span><span className="load-peak">สูงสุดโดยประมาณ <b>{formatNumber(peak, 2)} <small>kW</small></b></span><span>โหลดเฉลี่ย <b>{formatNumber(averageLoad, 2)} <small>kW</small></b></span></div>
+        <DailyLoadChart values={values} average={averageLoad} />
+      </Card>}
+
       <section className="overview-grid" id="monthly">
         <Card className="devices-card" id="devices"><header className="section-heading"><div><p className="kicker">สัดส่วนพลังงาน</p><h2>อุปกรณ์ที่ใช้ไฟสูงสุด</h2><span>เรียงตามพลังงานต่อเดือน</span></div><Button asChild variant="ghost"><Link href={myHomePath} aria-label="ดูอุปกรณ์ทั้งหมด">ทั้งหมด <ChevronRight aria-hidden="true" /></Link></Button></header><div className="device-list">{topDevices.length ? topDevices.map((device, index) => <div className="device-row" key={`${device.name}-${index}`}><div className="device-product-thumb"><Image src={device.image} alt="" width={72} height={72} /></div><div className="device-copy"><b>{device.name}</b><small>{device.detail}</small><span><i style={{width: `${device.width}%`}} /></span></div><div className="device-usage"><b>{device.energy}</b><small>{device.share}</small></div></div>) : <div className="device-empty"><i><Plus aria-hidden="true" /></i><div><b>ยังไม่มีเครื่องใช้ไฟฟ้า</b><span>เพิ่มอุปกรณ์ใน My Home แล้วข้อมูลจะปรากฏที่นี่</span></div><Button asChild variant="link"><Link href={myHomePath}>ไปที่ My Home <ChevronRight aria-hidden="true" /></Link></Button></div>}</div></Card>
         <Card className="bill-card">
@@ -245,12 +251,6 @@ function HouseholdDashboardContent({
 
 
       </section>
-
-      {homeItems.length > 0 && <Card className="load-card" id="live-load">
-        <header><div><p className="kicker">ช่วงเวลาการใช้ไฟ</p><h2>โหลดไฟภายในบ้าน</h2><span>ประมาณการจากช่วงเวลาที่ตั้งไว้ · วันทั่วไป</span></div><span className="load-period">24 ชั่วโมง</span></header>
-        <div className="load-summary"><span>โหลดติดตั้ง <b>{formatNumber(summary.ratedLoadKw, 2)} <small>kW</small></b></span><span className="load-peak">สูงสุดโดยประมาณ <b>{formatNumber(peak, 2)} <small>kW</small></b></span><span>โหลดเฉลี่ย <b>{formatNumber(averageLoad, 2)} <small>kW</small></b></span></div>
-        <DailyLoadChart values={values} average={averageLoad} />
-      </Card>}
 
       <section className="insight-card"><div><h3>ลองปรับเวลาใช้งาน แล้วเทียบค่าไฟอีกครั้ง</h3><p>ค่าประมาณอิงจากอุปกรณ์และรูปแบบการใช้งานที่คุณกำหนด</p></div><Button asChild variant="outline" className="insight-action"><Link href={myHomePath}>ปรับใน My Home <ArrowRight aria-hidden="true" /></Link></Button></section>
       </>}

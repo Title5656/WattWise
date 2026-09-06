@@ -1,40 +1,86 @@
 'use client';
 
-import { useId } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
-/** SVG only: a single entrance animation, no timers or synthetic live data. */
+/** Linear samples preserve the estimated loads without invented curve overshoots. */
 export function DailyLoadChart({ values, average }: { values: number[]; average: number }) {
   const id = useId();
+  const container = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(1000);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  useEffect(() => {
+    if (!container.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setChartWidth(Math.max(280, Math.round(entry.contentRect.width)));
+    });
+    observer.observe(container.current);
+    return () => observer.disconnect();
+  }, []);
   const peak = Math.max(...values, 0);
-  const ceiling = Math.max(peak, average, 0.1) * 1.2;
-  const x = (index: number) => 64 + index * 896 / Math.max(values.length - 1, 1);
-  const y = (value: number) => 244 - value / ceiling * 196;
-  const points = values.map((value, index) => `${x(index)},${y(value)}`).join(' ');
   const peakIndex = values.indexOf(peak);
-  return <div className="usage-line-chart">
-    <div className="load-chart-legend"><span><i />โหลดโดยประมาณ</span><span><i className="average" />ค่าเฉลี่ยทั้งวัน</span><small>หน่วย kW · ทุก 2 ชั่วโมง</small></div>
-    <svg viewBox="0 0 1000 300" role="img" aria-labelledby={`${id}-title ${id}-description`}>
-      <title id={`${id}-title`}>โหลดไฟภายในบ้านตามช่วงเวลา</title>
-      <desc id={`${id}-description`}>ประมาณการจากเวลาใช้งานที่ตั้งไว้ ไม่ใช่ค่าจากมิเตอร์สด โหลดเฉลี่ย {average.toFixed(2)} kW โหลดสูงสุด {peak.toFixed(2)} kW</desc>
-      <defs><linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--green)" stopOpacity=".24" /><stop offset="100%" stopColor="var(--green)" stopOpacity=".02" /></linearGradient></defs>
-      {[0, 0.25, 0.5, 0.75, 1].map(fraction => <g key={fraction}><line className="usage-grid" x1="64" x2="960" y1={y(ceiling * fraction)} y2={y(ceiling * fraction)} /><text className="usage-time" x="48" y={y(ceiling * fraction) + 4} textAnchor="end">{(ceiling * fraction).toFixed(2)}</text></g>)}
-      <g className="usage-series">
-        <polygon points={`64,244 ${points} ${x(values.length - 1)},244`} fill={`url(#${id}-fill)`} />
-        <polyline className="usage-line" points={points} />
-      </g>
-      <line className="usage-average" x1="64" x2="960" y1={y(average)} y2={y(average)} />
+  const rawStep = Math.max(peak, average, 0.1) / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const step = ([1, 2, 2.5, 5, 10].find(value => value * magnitude >= rawStep) ?? 10) * magnitude;
+  const ceiling = step * 4;
+  const time = (index: number) => `${String(index * 2).padStart(2, '0')}:00`;
+
+  function plot() {
+    const width = chartWidth;
+    const compact = width < 600;
+    const height = compact ? 252 : 280;
+    const left = compact ? 38 : 48;
+    const right = width - 18;
+    const bottom = height - 32;
+    const x = (index: number) => left + index * (right - left) / Math.max(values.length - 1, 1);
+    const y = (value: number) => bottom - value / ceiling * (bottom - 28);
+    const selected = activeIndex !== null && activeIndex < values.length ? activeIndex : null;
+    const tooltipWidth = compact ? 130 : 154;
+    const tooltipX = selected === null ? 0 : Math.max(left, Math.min(x(selected) - tooltipWidth / 2, right - tooltipWidth));
+    const tooltipY = selected === null ? 0 : Math.max(4, y(values[selected]) - 78);
+    const chartId = id;
+    const sampleWidth = (right - left) / Math.max(values.length - 1, 1);
+
+    return <svg viewBox={`0 0 ${width} ${height}`} role="group" aria-labelledby={`${chartId}-title ${chartId}-description`}>
+      <title id={`${chartId}-title`}>โหลดไฟภายในบ้านตามช่วงเวลา</title>
+      <desc id={`${chartId}-description`}>ประมาณการทุก 2 ชั่วโมงจากเวลาใช้งานที่ตั้งไว้ ไม่ใช่ค่าจากมิเตอร์สด โหลดเฉลี่ย {average.toFixed(2)} kW โหลดสูงสุด {peak.toFixed(2)} kW ใช้ Tab เลือกจุดเพื่ออ่านค่า</desc>
+      {[0, 1, 2, 3, 4].map(tick => <g key={tick} aria-hidden="true">
+        <line className="usage-grid" x1={left} x2={right} y1={y(step * tick)} y2={y(step * tick)} />
+        <text className="usage-time" x={left - 10} y={y(step * tick) + 4} textAnchor="end">{Number((step * tick).toFixed(3))}</text>
+      </g>)}
+      <line className="usage-average" x1={left} x2={right} y1={y(average)} y2={y(average)} aria-hidden="true" />
+      <polyline className="usage-line" points={values.map((value, index) => `${x(index)},${y(value)}`).join(' ')} aria-hidden="true" />
+      {selected !== null && <line className="usage-cursor" x1={x(selected)} x2={x(selected)} y1="20" y2={bottom} aria-hidden="true" />}
       {values.map((value, index) => {
-        const time = `${String(index * 2).padStart(2, '0')}:00`;
         const isPeak = peak > 0 && index === peakIndex;
-        return <g key={time} className={`usage-sample${isPeak ? ' is-peak' : ''}`} tabIndex={0} aria-label={`${time}: ${value.toFixed(2)} kW${isPeak ? ' สูงสุด' : ''}`}>
-          <title>{time}: {value.toFixed(2)} kW</title>
-          <circle className="usage-hit" cx={x(index)} cy={y(value)} r="22" />
-          {isPeak && <circle className="usage-peak-halo" cx={x(index)} cy={y(value)} r="12" />}
-          <circle className="usage-point" cx={x(index)} cy={y(value)} r={isPeak ? 5 : 3.5} />
-          <text className="usage-value" x={x(index)} y={y(value) - 20} textAnchor="middle">{value.toFixed(2)}</text>
-          <text className="usage-time" x={x(index)} y="278" textAnchor="middle">{time}</text>
+        const isActive = selected === index;
+        const hitLeft = Math.max(left - 10, x(index) - sampleWidth / 2);
+        return <g key={index}>
+          <g className="usage-sample" role="button" tabIndex={0}
+            aria-label={`${time(index)}: ${value.toFixed(2)} kW${isPeak ? ' สูงสุด' : ''}`}
+            onMouseEnter={() => setActiveIndex(index)} onMouseLeave={() => setActiveIndex(null)}
+            onFocus={() => setActiveIndex(index)} onBlur={() => setActiveIndex(null)}
+            onClick={() => setActiveIndex(index)}
+            onKeyDown={event => {
+              if (event.key === 'Escape') setActiveIndex(null);
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActiveIndex(index); }
+            }}>
+            {(isPeak || isActive) && <circle className="usage-peak-halo" cx={x(index)} cy={y(value)} r="9" />}
+            <circle className="usage-point" cx={x(index)} cy={y(value)} r={isActive || isPeak ? 4 : 2.5} />
+            <rect x={hitLeft} y="20" width={Math.min(x(index) + sampleWidth / 2, right + 10) - hitLeft} height={bottom - 20} fill="transparent" />
+          </g>
+          {(!compact || index % 3 === 0 || index === values.length - 1) && <text className="usage-time" x={x(index)} y={height - 6} textAnchor="middle" aria-hidden="true">{time(index)}</text>}
         </g>;
       })}
-    </svg>
+      {selected !== null && <g className="usage-tooltip" transform={`translate(${tooltipX} ${tooltipY})`} pointerEvents="none" aria-hidden="true">
+        <rect width={tooltipWidth} height="64" rx="7" />
+        <text x="12" y="22">{time(selected)}{selected === peakIndex && peak > 0 ? ' · สูงสุด' : ''}</text>
+        <text className="usage-tooltip-value" x="12" y="47">{values[selected].toFixed(2)} kW</text>
+      </g>}
+    </svg>;
+  }
+
+  return <div className="usage-line-chart" ref={container}>
+    <div className="load-chart-legend"><span><i />โหลดโดยประมาณ</span><span><i className="average" />ค่าเฉลี่ยทั้งวัน</span><small>หน่วย kW · ทุก 2 ชั่วโมง</small></div>
+    {values.length ? <>{plot()}<small className="usage-chart-help">ชี้ แตะ หรือใช้ Tab ที่กราฟเพื่อดูค่าแต่ละช่วงเวลา</small></> : <p className="account-muted">ยังไม่มีข้อมูลช่วงเวลาการใช้ไฟ</p>}
   </div>;
 }
