@@ -135,9 +135,11 @@ jobs:
 
           html_headers="$RUNNER_TEMP/wattwise-html-headers.txt"
           html_body="$RUNNER_TEMP/wattwise.html"
+          access_cookies="$RUNNER_TEMP/wattwise-access-cookies.txt"
           html_http_code="$(curl --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors \
             --connect-timeout 10 --max-time 30 \
             "${access_headers[@]}" \
+            --cookie-jar "$access_cookies" \
             --dump-header "$html_headers" \
             --output "$html_body" \
             --write-out "%{http_code}" \
@@ -176,6 +178,7 @@ jobs:
           bootstrap_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
             --connect-timeout 10 --max-time 30 \
             "${access_headers[@]}" \
+            --cookie "$access_cookies" \
             --dump-header "$bootstrap_headers" \
             --output "$RUNNER_TEMP/wattwise-bootstrap.js" \
             --write-out "%{http_code}" \

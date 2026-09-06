@@ -68,6 +68,8 @@ test('production deployment verifies credentialed HTML bootstrap assets', async 
   assert.match(workflow, /content-type:.*javascript/i);
   assert.match(workflow, /bootstrap_http_code/);
   assert.match(workflow, /Authenticated HTML has no credentialed module bootstrap script/);
+  assert.match(workflow, /--cookie-jar "\$access_cookies"/);
+  assert.match(workflow, /--cookie "\$access_cookies"/);
 });
 
 test('D1 migration bootstrap is additive and idempotent', async () => {
