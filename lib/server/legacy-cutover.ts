@@ -286,6 +286,37 @@ export async function claimQuarantinedHousehold(
     throw new HouseholdClaimNotFoundError();
   }
   const tokenHash = await sha256(token);
+  const claimRows = await db.prepare(`SELECT legacy_cutover_sources.source_kind AS sourceKind,
+      legacy_cutover_sources.source_key AS sourceKey,
+      legacy_cutover_sources.household_id AS householdId,
+      legacy_cutover_sources.manifest_checksum AS manifestChecksum,
+      legacy_cutover_sources.target_checksum AS targetChecksum,
+      households.public_id AS householdPublicId
+    FROM household_claim_tokens
+    INNER JOIN legacy_cutover_sources ON legacy_cutover_sources.id = household_claim_tokens.source_id
+    INNER JOIN households ON households.id = legacy_cutover_sources.household_id
+    WHERE household_claim_tokens.token_hash = ? AND household_claim_tokens.consumed_at IS NULL
+      AND household_claim_tokens.expires_at > ? AND legacy_cutover_sources.verification_status = 'verified'
+      AND legacy_cutover_sources.source_drift = 0 AND legacy_cutover_sources.sealed_at IS NOT NULL
+      AND households.status = 'quarantined'`)
+    .bind(tokenHash, now).all<{
+      sourceKind: SourceKind; sourceKey: string; householdId: number;
+      manifestChecksum: string; targetChecksum: string; householdPublicId: string;
+    }>();
+  const claim = claimRows.results[0];
+  if (!claim) throw new HouseholdClaimNotFoundError();
+  const liveManifestChecksum = await manifestChecksum(await readLiveManifestRows(
+    db, claim.sourceKind, claim.sourceKey, claim.householdPublicId,
+  ));
+  const targetConfig = await readTargetConfig(db, claim.householdId);
+  const liveTargetChecksum = targetConfig ? await transformedChecksum(
+    targetConfig,
+    await readTargetAppliances(db, claim.householdId),
+    await readTargetMonthly(db, claim.householdId),
+  ) : null;
+  if (liveManifestChecksum !== claim.manifestChecksum || liveTargetChecksum !== claim.targetChecksum) {
+    throw new HouseholdClaimNotFoundError();
+  }
   const [consumeResult, memberResult, householdResult, sourceResult] = await db.batch([
     db.prepare(`UPDATE household_claim_tokens
     SET consumed_at = ?, claimed_by_user_id = ?

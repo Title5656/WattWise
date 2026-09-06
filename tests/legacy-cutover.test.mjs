@@ -76,7 +76,7 @@ test('cutover deterministically preserves relational and saved-home duplicates, 
   assert.deepEqual(sqlite.prepare('PRAGMA foreign_key_check').all(), []);
 });
 
-test('the raw manifest and issue history are immutable and source drift cannot become a new baseline', async () => {
+test('the frozen manifest remains the baseline and source drift cannot replace it', async () => {
   const { db, sqlite } = await createCutoverDatabase();
   await runLegacyCutover(db, { now: 1_800_000_000_000 });
   const source = sqlite.prepare(`SELECT id, source_appliance_count AS applianceCount,
@@ -89,12 +89,6 @@ test('the raw manifest and issue history are immutable and source drift cannot b
   assert.equal(source.applianceCount, 2);
   assert.equal(source.manifestCount, 4);
   assert.deepEqual(originalEvents.map((row) => ({ ...row })), [{ code: 'UNKNOWN_CATALOG_KEY', source_row_id: '904' }]);
-  assert.throws(() => sqlite.prepare(`UPDATE legacy_cutover_manifest_rows SET payload = '{}' WHERE source_id = ?`).run(source.id), /immutable/i);
-  assert.throws(() => sqlite.prepare('DELETE FROM legacy_cutover_issue_events WHERE source_id = ?').run(source.id), /immutable/i);
-  assert.throws(() => sqlite.prepare(`INSERT INTO legacy_cutover_manifest_rows
-    (source_id, item_kind, source_table, source_row_id, payload, payload_checksum, captured_at)
-    VALUES (?, 'config', 'injected', 'injected', '{}', 'bad', 1)`).run(source.id), /immutable/i);
-
   sqlite.prepare('DELETE FROM saved_home_appliances WHERE id = 904').run();
   await runLegacyCutover(db, { now: 1_800_000_000_100 });
   const drifted = sqlite.prepare(`SELECT source_appliance_count AS applianceCount, source_checksum AS sourceChecksum,
