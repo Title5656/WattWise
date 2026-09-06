@@ -146,6 +146,49 @@ test('passes only verified identity to Vinext', async () => {
   assert.equal(received.headers.get('x-wattwise-auth-subject'), identity.subject);
 });
 
+test('credentializes module bootstrap assets in authenticated HTML responses', async () => {
+  const guard = createAccessGuard({
+    fetch: async () => new Response([
+      '<!doctype html>',
+      '<link rel="modulepreload" href="/_next/static/chunks/framework.js">',
+      '<script src="/_next/static/chunks/app.js" type="module" crossorigin="anonymous"></script>',
+      '<script src="/legacy.js"></script>',
+    ].join(''), { headers: { 'content-type': 'text/html; charset=utf-8' } }),
+  }, async () => identity);
+
+  const response = await guard.fetch(new Request('https://wattwise.test/', {
+    headers: { 'cf-access-jwt-assertion': 'signed-token' },
+  }), accessEnv, {});
+  const html = await response.text();
+
+  assert.match(html, /<link[^>]*rel="modulepreload"[^>]*crossorigin="use-credentials"/);
+  assert.match(html, /<script[^>]*type="module"[^>]*crossorigin="use-credentials"/);
+  assert.match(html, /<script src="\/legacy\.js"><\/script>/);
+  assert.doesNotMatch(html, /crossorigin="anonymous"/);
+});
+
+test('does not disguise an authenticated application failure as an expired Access session', async () => {
+  const guard = createAccessGuard({
+    fetch: async () => { throw new Error('application failed'); },
+  }, async () => identity);
+
+  await assert.rejects(() => guard.fetch(new Request('https://wattwise.test/', {
+    headers: { 'cf-access-jwt-assertion': 'signed-token' },
+  }), accessEnv, {}), /application failed/);
+});
+
+test('leaves non-HTML responses untouched', async () => {
+  const body = '{"markup":"<script type=\\"module\\" src=\\"/app.js\\"></script>"}';
+  const guard = createAccessGuard({
+    fetch: async () => new Response(body, { headers: { 'content-type': 'application/json' } }),
+  }, async () => identity);
+
+  const response = await guard.fetch(new Request('https://wattwise.test/api/me', {
+    headers: { 'cf-access-jwt-assertion': 'signed-token' },
+  }), accessEnv, {});
+  assert.equal(await response.text(), body);
+});
+
 test('does not trust a Sites identity outside local development', async () => {
   let received;
   const handler = { fetch: async (request) => { received = request; return new Response('ok'); } };

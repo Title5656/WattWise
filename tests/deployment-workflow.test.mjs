@@ -58,6 +58,17 @@ test('production artifacts use current artifact actions', async () => {
   assert.doesNotMatch(workflow, /actions\/(?:upload|download)-artifact@v4/);
 });
 
+test('production deployment verifies credentialed HTML bootstrap assets', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+
+  assert.match(workflow, /Smoke-test credentialed production bootstrap/);
+  assert.match(workflow, /type="module"/);
+  assert.match(workflow, /crossorigin="use-credentials"/);
+  assert.match(workflow, /bootstrap_path/);
+  assert.match(workflow, /content-type:.*javascript/i);
+  assert.match(workflow, /bootstrap_http_code/);
+});
+
 test('D1 migration bootstrap is additive and idempotent', async () => {
   const bootstrap = await readFile(new URL('../scripts/d1-baseline.sql', import.meta.url), 'utf8');
 

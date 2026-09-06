@@ -36,16 +36,19 @@ test('membership verification requests identity before memberships', async () =>
   const households = deferred();
   const calls = [];
   const controller = lifecycle().createHouseholdMembershipsLifecycle(async (url, init) => {
-    calls.push({ url, signal: init.signal });
+    calls.push({ url, signal: init.signal, credentials: init.credentials });
     return url === '/api/me' ? me.promise : households.promise;
   });
 
   const mounted = controller.mount();
   assert.deepEqual(calls.map(({ url }) => url), ['/api/me']);
+  assert.equal(calls[0].signal.aborted, false);
+  assert.equal(calls[0].credentials, 'same-origin');
 
   me.resolve(response(200, { user }));
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(calls.map(({ url }) => url), ['/api/me', '/api/households']);
+  assert.equal(calls[1].credentials, 'same-origin');
 
   households.resolve(response(200, { userId: user.id, households: [memberHousehold] }));
   await mounted;
@@ -113,7 +116,9 @@ test('membership refresh retries when account identity changes between sequentia
   const householdB = { ...memberHousehold, id: 'house-2', name: 'บ้านอีกบัญชี' };
   let meCalls = 0;
   const readyStates = [];
-  const controller = lifecycle().createHouseholdMembershipsLifecycle(async (url) => {
+  const requestCredentials = [];
+  const controller = lifecycle().createHouseholdMembershipsLifecycle(async (url, init) => {
+    requestCredentials.push(init.credentials);
     if (url === '/api/me') {
       meCalls += 1;
       return response(200, { user: meCalls === 1 ? user : userB });
@@ -130,6 +135,7 @@ test('membership refresh retries when account identity changes between sequentia
   assert.equal(readyStates.length, 1);
   assert.equal(readyStates[0].user.id, userB.id);
   assert.equal(readyStates[0].households[0].id, householdB.id);
+  assert.deepEqual(requestCredentials, ['same-origin', 'same-origin', 'same-origin', 'same-origin']);
 });
 
 test('scope replacement disposes the old resource before creating the new one', () => {

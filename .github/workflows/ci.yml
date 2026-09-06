@@ -122,6 +122,55 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy --config dist/server/wrangler.json
 
+      - name: Smoke-test credentialed production bootstrap
+        env:
+          PRODUCTION_URL: https://wattwise.title5656.workers.dev
+          CLOUDFLARE_ACCESS_CLIENT_ID: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_ID }}
+          CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ secrets.CLOUDFLARE_ACCESS_CLIENT_SECRET }}
+        run: |
+          access_headers=(
+            -H "CF-Access-Client-Id: $CLOUDFLARE_ACCESS_CLIENT_ID"
+            -H "CF-Access-Client-Secret: $CLOUDFLARE_ACCESS_CLIENT_SECRET"
+          )
+
+          html_headers="$RUNNER_TEMP/wattwise-html-headers.txt"
+          html_body="$RUNNER_TEMP/wattwise.html"
+          html_http_code="$(curl --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            "${access_headers[@]}" \
+            --dump-header "$html_headers" \
+            --output "$html_body" \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL/")"
+
+          test "$html_http_code" = 200
+          grep -Eiq '^content-type: *text/html' "$html_headers"
+
+          bootstrap_tag="$(grep -Eio '<script[^>]*>' "$html_body" \
+            | grep -Ei 'type="module"' \
+            | grep -Ei 'src="[^"]+"' \
+            | grep -Ei 'crossorigin="use-credentials"' \
+            | head -n 1)"
+          test -n "$bootstrap_tag"
+
+          bootstrap_path="$(printf '%s' "$bootstrap_tag" | sed -E 's/.*src="([^"]+)".*/\1/')"
+          case "$bootstrap_path" in
+            /*) ;;
+            *) echo "Unexpected bootstrap asset path: $bootstrap_path" >&2; exit 1 ;;
+          esac
+
+          bootstrap_headers="$RUNNER_TEMP/wattwise-bootstrap-headers.txt"
+          bootstrap_http_code="$(curl --silent --show-error --retry 4 --retry-delay 2 --retry-all-errors \
+            --connect-timeout 10 --max-time 30 \
+            "${access_headers[@]}" \
+            --dump-header "$bootstrap_headers" \
+            --output "$RUNNER_TEMP/wattwise-bootstrap.js" \
+            --write-out "%{http_code}" \
+            "$PRODUCTION_URL$bootstrap_path")"
+
+          test "$bootstrap_http_code" = 200
+          grep -Eiq '^content-type:.*javascript' "$bootstrap_headers"
+
       - name: Smoke-test production catalog API
         env:
           PRODUCTION_URL: https://wattwise.title5656.workers.dev

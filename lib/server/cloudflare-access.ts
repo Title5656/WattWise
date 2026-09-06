@@ -99,6 +99,62 @@ function authenticationRequired(): Response {
   return Response.json({ code: 'AUTHENTICATION_REQUIRED', message: 'Authentication is required.' }, { status: 401 });
 }
 
+function hasAttributeValue(tag: string, name: string, value: string): boolean {
+  return new RegExp(`\\b${name}\\s*=\\s*(?:["']${value}["']|${value})(?=\\s|/?>)`, 'i').test(tag);
+}
+
+function setCredentialedCrossOrigin(tag: string): string {
+  const existing = /\bcrossorigin\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/i;
+  if (existing.test(tag)) return tag.replace(existing, 'crossorigin="use-credentials"');
+  const closingLength = tag.endsWith('/>') ? 2 : 1;
+  return `${tag.slice(0, -closingLength)} crossorigin="use-credentials"${tag.slice(-closingLength)}`;
+}
+
+function credentializeModuleAssets(html: string): string {
+  return html
+    .replace(/<script\b[^>]*>/gi, (tag) => (
+      hasAttributeValue(tag, 'type', 'module') && /\bsrc\s*=/i.test(tag)
+        ? setCredentialedCrossOrigin(tag)
+        : tag
+    ))
+    .replace(/<link\b[^>]*>/gi, (tag) => (
+      hasAttributeValue(tag, 'rel', 'modulepreload') && /\bhref\s*=/i.test(tag)
+        ? setCredentialedCrossOrigin(tag)
+        : tag
+    ));
+}
+
+async function withCredentialedModuleAssets(response: Response): Promise<Response> {
+  if (!response.headers.get('content-type')?.toLowerCase().includes('text/html')) return response;
+
+  type RewriterElement = { setAttribute(name: string, value: string): void };
+  type Rewriter = {
+    on(selector: string, handlers: { element(element: RewriterElement): void }): Rewriter;
+    transform(input: Response): Response;
+  };
+  const NativeHtmlRewriter = Reflect.get(globalThis, 'HTMLRewriter') as (new () => Rewriter) | undefined;
+  if (NativeHtmlRewriter) {
+    const credentialHandler = {
+      element(element: RewriterElement) {
+        element.setAttribute('crossorigin', 'use-credentials');
+      },
+    };
+    return new NativeHtmlRewriter()
+      .on('script[type="module"][src]', credentialHandler)
+      .on('link[rel="modulepreload"][href]', credentialHandler)
+      .transform(response);
+  }
+
+  // Node-based production previews do not expose Cloudflare's streaming HTMLRewriter.
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(credentializeModuleAssets(await response.text()), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export function createAccessGuard(
   handler: WorkerHandler,
   verify: VerifyAccessToken = verifyAccessJwt,
@@ -107,18 +163,28 @@ export function createAccessGuard(
   return {
     async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext): Promise<Response> {
       const url = new URL(request.url);
-      if (request.method === 'GET' && isPublicPath(url.pathname)) return handler.fetch(request, env, ctx);
+      if (request.method === 'GET' && isPublicPath(url.pathname)) {
+        return withCredentialedModuleAssets(await handler.fetch(request, env, ctx));
+      }
 
       const localIdentity = allowLocalSitesIdentity ? localSitesIdentity(request) : null;
-      if (localIdentity) return handler.fetch(withVerifiedIdentity(request, localIdentity), env, ctx);
+      if (localIdentity) {
+        return withCredentialedModuleAssets(
+          await handler.fetch(withVerifiedIdentity(request, localIdentity), env, ctx),
+        );
+      }
 
       const token = request.headers.get('cf-access-jwt-assertion');
       if (!token) return authenticationRequired();
+      let identity: VerifiedAccessIdentity;
       try {
-        return handler.fetch(withVerifiedIdentity(request, await verify(token, readAccessConfig(env))), env, ctx);
+        identity = await verify(token, readAccessConfig(env));
       } catch {
         return authenticationRequired();
       }
+      return withCredentialedModuleAssets(
+        await handler.fetch(withVerifiedIdentity(request, identity), env, ctx),
+      );
     },
   };
 }

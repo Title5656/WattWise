@@ -44,8 +44,26 @@ Add these repository secrets:
 - `CLOUDFLARE_ACCESS_CLIENT_SECRET`
 
 The deployment workflow writes only the two non-secret values into the
-generated Wrangler configuration. The post-deploy catalog check sends the
-service-token credentials as Access headers and does not print them.
+generated Wrangler configuration. Post-deploy checks send the service-token
+credentials as Access headers and do not print them.
+
+## Credentialed browser bootstrap
+
+The entire production hostname is protected by Cloudflare Access, including
+the JavaScript files required to hydrate the app. Keep
+`crossOrigin: 'use-credentials'` in `next.config.ts` so Safari, Chrome, and
+other WebKit browsers on iOS and iPadOS send the `CF_Authorization` cookie when
+they load bootstrap scripts and module preloads. Removing this setting can
+leave the server-rendered household loading screen visible indefinitely even
+when `/api/me` and `/api/households` return valid JSON.
+
+The membership lifecycle also sets `credentials: 'same-origin'` explicitly on
+both API requests. Vinext currently accepts the Next.js configuration but does
+not apply it to App Router bootstrap tags, so the Worker guard also enforces the
+attribute on module scripts and module preloads in HTML responses. The
+production workflow verifies that authenticated HTML contains a credentialed
+bootstrap script, then downloads that asset and checks for a successful
+JavaScript response instead of an Access login redirect.
 
 ## Verify after deployment
 
@@ -53,3 +71,8 @@ In a fresh browser profile, open the production hostname. Cloudflare Access
 should require Google sign-in before WattWise loads. After sign-in, the
 household routes should load normally. A request without Access credentials to
 `/api/me` must receive `401`.
+
+On Safari and Chrome for a supported iPhone or iPad, sign in with an account
+that belongs to two households. The household picker should appear within 10
+seconds without a refresh. Repeat Google sign-in, onboarding, and household
+navigation on desktop to check for regressions.

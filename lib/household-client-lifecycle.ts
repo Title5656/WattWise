@@ -17,7 +17,14 @@ type ResponseLike = {
 
 type ClientFetcher = (
   url: string,
-  init: { cache?: 'no-store'; method?: string; headers?: Record<string, string>; body?: string; signal: AbortSignal },
+  init: {
+    cache?: 'no-store';
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    credentials?: 'same-origin';
+    signal: AbortSignal;
+  },
 ) => Promise<ResponseLike>;
 
 type StateListener<State> = (state: State) => void;
@@ -61,7 +68,11 @@ export function createHouseholdMembershipsLifecycle(fetcher: ClientFetcher) {
     const isCurrent = () => mounted && candidate === generation && !signal.aborted;
     try {
       for (let attempt = 0; attempt < 2; attempt += 1) {
-        const meResponse = await fetcher('/api/me', { cache: 'no-store', signal });
+        const meResponse = await fetcher('/api/me', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal,
+        });
         if (!isCurrent()) return;
         if (meResponse.status === 401) {
           publish({ ...emptyMembershipsState, phase: 'session-expired' });
@@ -76,7 +87,11 @@ export function createHouseholdMembershipsLifecycle(fetcher: ClientFetcher) {
           return;
         }
 
-        const householdsResponse = await fetcher('/api/households', { cache: 'no-store', signal });
+        const householdsResponse = await fetcher('/api/households', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal,
+        });
         if (!isCurrent()) return;
         if (householdsResponse.status === 401) {
           publish({ ...emptyMembershipsState, phase: 'session-expired' });
