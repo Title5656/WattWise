@@ -2,51 +2,26 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useState } from 'react';
-import { ChevronRight, House, LayoutDashboard, Menu, Settings, UserRound, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { House, LayoutDashboard, Settings, UserRound } from 'lucide-react';
 import { householdDashboardPath, householdMyHomePath } from '@/lib/household-ui';
 
 type ActivePage = 'status' | 'home' | 'profile' | 'settings';
 
 export function WattWiseSidebar({ active, householdId, homeItemCount }: { active: ActivePage; householdId?: string; homeItemCount?: number }) {
-  const [open, setOpen] = useState(false);
   const dashboardPath = householdId ? householdDashboardPath(householdId) : '/';
   const myHomePath = householdId ? householdMyHomePath(householdId) : '/my-home';
   const links = [
-    { id: 'status', label: 'Status', detail: 'ภาพรวมพลังงานทั้งหมด', icon: LayoutDashboard, href: `${dashboardPath}#overview`, badge: 'LIVE' },
-    { id: 'home', label: 'My Home', detail: 'จัดการเครื่องใช้ไฟฟ้าในบ้าน', icon: House, href: myHomePath, badge: 'BUILD' },
-    { id: 'profile', label: 'Profile', detail: 'บัญชีและบ้านของคุณ', icon: UserRound, href: '/profile', badge: undefined },
-    { id: 'settings', label: 'Settings', detail: 'บัญชีและการออกจากระบบ', icon: Settings, href: '/settings', badge: undefined },
+    { id: 'status', label: 'ภาพรวม', icon: LayoutDashboard, href: `${dashboardPath}#overview` },
+    { id: 'home', label: 'My Home', icon: House, href: myHomePath },
+    { id: 'profile', label: 'บัญชีและบ้าน', icon: UserRound, href: '/profile' },
+    { id: 'settings', label: 'ตั้งค่า', icon: Settings, href: '/settings' },
   ] as const;
-
-  return <>
-    <Button variant="ghost" size="icon" className="mobile-sidebar-toggle" onClick={() => setOpen(true)} aria-label="เปิดเมนู"><Menu aria-hidden="true" /></Button>
-    <Button variant="ghost" className={`sidebar-scrim ${open ? 'show' : ''}`} onClick={() => setOpen(false)} aria-label="ปิดเมนู" />
-    <aside className={`sidebar ${open ? 'mobile-open' : ''}`}>
-      <div className="sidebar-top">
-        <Link className="brand" href={`${dashboardPath}#overview`} onClick={() => setOpen(false)}><span className="brand-mark"><Image src="/wattwise-logo-small.png" alt="WattWise" width={40} height={40} priority /></span><span><b>WattWise</b><small>HOME ENERGY</small></span></Link>
-        <Button variant="ghost" size="icon" className="sidebar-close" onClick={() => setOpen(false)} aria-label="ปิดเมนู"><X aria-hidden="true" /></Button>
-      </div>
-      <nav className="side-nav" aria-label="เมนูหลัก">
-        <p>MAIN MENU</p>
-        {links.map((link) => {
-          const Icon = link.icon;
-          return <Link
-          className={active === link.id ? 'active' : ''}
-          href={link.href}
-          key={link.id}
-          onClick={() => setOpen(false)}
-          aria-current={active === link.id ? 'page' : undefined}
-        >
-          <i><Icon aria-hidden="true" /></i><span><b>{link.label}</b><small>{link.detail}</small></span>{link.badge ? <em>{link.badge}</em> : null}
-        </Link>;})}
-      </nav>
-      <Link className="sidebar-account" href={myHomePath} onClick={() => setOpen(false)} aria-label="ไปจัดการอุปกรณ์ใน My Home">
-        <i className="sidebar-home-icon"><House aria-hidden="true" /><span /></i>
-        <span><b>สถานะบ้าน</b><small>{!householdId ? 'เลือกบ้านเพื่อดูอุปกรณ์' : homeItemCount === undefined ? 'กำลังเชื่อมข้อมูลบ้าน' : `${homeItemCount} อุปกรณ์ · ออนไลน์`}</small></span>
-        <ChevronRight aria-hidden="true" />
-      </Link>
-    </aside>
-  </>;
+  return <header className="sidebar">
+    <a className="skip-link" href="#page-content">ข้ามไปเนื้อหา</a>
+    <Link className="brand" href={`${dashboardPath}#overview`}><Image src="/wattwise-logo-small.png" alt="" width={36} height={36} priority /><b>WattWise</b></Link>
+    <nav className="side-nav" aria-label="เมนูหลัก">
+      {links.map((link) => { const Icon = link.icon; return <Link className={active === link.id ? 'active' : ''} href={link.href} key={link.id} aria-current={active === link.id ? 'page' : undefined}><Icon aria-hidden="true" /><span>{link.label}</span></Link>; })}
+    </nav>
+    <Link className="sidebar-account" href={myHomePath} aria-label="ไปจัดการอุปกรณ์ใน My Home"><House aria-hidden="true" /><small>{!householdId ? 'เลือกบ้าน' : homeItemCount === undefined ? 'My Home' : `${homeItemCount} รายการในบ้าน`}</small></Link>
+  </header>;
 }

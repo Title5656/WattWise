@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, Banknote, Gauge, House, Info, Plus, Search, Trash2, Zap } from 'lucide-react';
+import { ArrowLeft, Info, Plus, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -191,6 +191,7 @@ function HouseholdMyHomeContent({
     };
   }, [autosaveResources, autosaveRole, autosaveScopeKey, autosaveUserId, householdId]);
 
+  const [mobilePanel, setMobilePanel] = useState<'home' | 'catalog'>('home');
   const summary = calculateHomeSummary(homeItems);
   const itemEnergyById = new Map(summary.itemCalculations.map((item) => [
     item.instanceId,
@@ -255,6 +256,7 @@ function HouseholdMyHomeContent({
     return <HouseholdAccessState phase="access-denied" onRefresh={() => void onRefreshMemberships()} />;
   }
 
+  const homeLoading = autosaveState.phase === 'idle' || autosaveState.phase === 'loading';
   const saveLabel = autosaveState.phase === 'idle' || autosaveState.phase === 'loading'
     ? 'กำลังโหลด...'
     : autosaveState.phase === 'ready' || autosaveState.phase === 'saving'
@@ -265,12 +267,12 @@ function HouseholdMyHomeContent({
           ? 'พบข้อมูลเวอร์ชันใหม่'
           : 'บันทึกไม่สำเร็จ';
 
-  return <main className="dashboard-shell my-home-shell">
+  return <div className="dashboard-shell my-home-shell">
     <WattWiseSidebar active="home" householdId={householdId} homeItemCount={autosaveState.phase === 'loading' ? undefined : homeItems.length} />
-    <section className="my-home-content">
+    <main className="my-home-content" id="page-content" tabIndex={-1}>
       <header className="builder-header">
-        <div><p className="kicker">MY HOME · {household.name}</p><h1>ประกอบบ้านจำลองของคุณ</h1><span>เลือกเครื่องใช้ไฟฟ้า ปรับเวลาใช้งาน และดูค่าพลังงานโดยประมาณทันที</span></div>
-        <div className="builder-header-actions"><span className={`save-pill ${autosaveState.phase}`}><i />{saveLabel}</span><Button asChild variant="outline" className="back-status"><Link href={`${householdDashboardPath(householdId)}#overview`}><ArrowLeft aria-hidden="true" /><span>กลับหน้า Status</span></Link></Button></div>
+        <div><p className="kicker">MY HOME · {household.name}</p><h1>เครื่องใช้ไฟฟ้าในบ้าน</h1><span>ปรับจำนวนและเวลาใช้งาน เพื่อให้ค่าประมาณใกล้เคียงบ้านของคุณ</span></div>
+        <div className="builder-header-actions"><span role="status" aria-live="polite" className={`save-pill ${autosaveState.phase}`}><i />{saveLabel}</span><Button asChild variant="outline" className="back-status"><Link href={`${householdDashboardPath(householdId)}#overview`}><ArrowLeft aria-hidden="true" /><span>ดูภาพรวม</span></Link></Button></div>
       </header>
       <div className="builder-identity"><HouseholdIdentityBar user={user} household={household} households={households} destination="my-home" /></div>
 
@@ -279,25 +281,26 @@ function HouseholdMyHomeContent({
       {autosaveState.phase === 'conflict' && <section className="autosave-message conflict" role="alert"><div><b>My Home มีข้อมูลเวอร์ชันใหม่กว่า</b><span>ฉบับร่างของคุณยังอยู่ครบ ระบบจะไม่รวมข้อมูลหรือบันทึกซ้ำอัตโนมัติ{autosaveState.currentRevision === null ? '' : ` · เวอร์ชันล่าสุด ${autosaveState.currentRevision}`}</span></div><Button variant="outline" onClick={discardConflictDraft}>ละทิ้งฉบับร่างและโหลดใหม่</Button></section>}
       {autosaveState.phase === 'retryable-error' && <section className="autosave-message error" role="alert"><div><b>บันทึกไม่สำเร็จชั่วคราว</b><span>ฉบับร่างยังอยู่ในอุปกรณ์นี้ กรุณาลองใหม่เมื่อการเชื่อมต่อพร้อม</span></div><Button variant="outline" onClick={retryAutosave}>ลองบันทึกอีกครั้ง</Button></section>}
 
-      <section className="builder-summary" aria-label="สรุปบ้านจำลอง">
-        <article><i><House aria-hidden="true" /></i><span><small>อุปกรณ์ในบ้าน</small><strong>{summary.totalUnits}</strong><em>เครื่อง</em></span></article><article><i><Zap aria-hidden="true" /></i><span><small>พลังงานต่อเดือน</small><strong>{formatNumber(summary.monthlyKwh, 1)}</strong><em>kWh</em></span></article><article className="bill"><i><Banknote aria-hidden="true" /></i><span><small>ค่าไฟโดยประมาณ</small><strong>{formatNumber(summary.monthlyBill)}</strong><em>บาท / เดือน</em></span></article><article><i><Gauge aria-hidden="true" /></i><span><small>พลังงานเฉลี่ยต่อวัน</small><strong>{formatNumber(summary.dailyKwh, 1)}</strong><em>kWh</em></span></article>
+      <section className="builder-summary" aria-label="สรุปบ้านจำลอง" aria-busy={homeLoading}>
+        <article><span><small>อุปกรณ์ในบ้าน</small><strong>{homeLoading ? '—' : summary.totalUnits}</strong><em>เครื่อง</em></span></article><article><span><small>พลังงานต่อเดือน</small><strong>{homeLoading ? '—' : formatNumber(summary.monthlyKwh, 1)}</strong><em>kWh</em></span></article><article className="bill"><span><small>ค่าไฟโดยประมาณ</small><strong>{homeLoading ? '—' : formatNumber(summary.monthlyBill)}</strong><em>บาท / เดือน</em></span></article><article><span><small>พลังงานเฉลี่ยต่อวัน</small><strong>{homeLoading ? '—' : formatNumber(summary.dailyKwh, 1)}</strong><em>kWh</em></span></article>
       </section>
-      <section className="builder-bill-breakdown" aria-label="รายละเอียดค่าไฟ"><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'}{summary.bill.tariffStatus === 'latest_known' ? ' · ใช้ข้อมูลล่าสุดที่ทราบ' : ''}</p><span><small>ค่าไฟฐาน</small><b>{formatNumber(summary.bill.energyCharge, 2)} ฿</b></span><span><small>ค่าบริการ</small><b>{formatNumber(summary.bill.serviceCharge, 2)} ฿</b></span><span><small>Ft</small><b>{formatNumber(summary.bill.ftCharge, 2)} ฿</b></span><span><small>VAT</small><b>{formatNumber(summary.bill.vat, 2)} ฿</b></span><span className="builder-bill-total"><small>รวมโดยประมาณ</small><b>{formatNumber(summary.bill.total, 2)} ฿</b></span></section>
+      <details className="bill-disclosure" hidden={homeLoading}><summary>รายละเอียดการคำนวณค่าไฟ</summary><section className="builder-bill-breakdown" aria-label="รายละเอียดค่าไฟ"><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'}{summary.bill.tariffStatus === 'latest_known' ? ' · ใช้ข้อมูลล่าสุดที่ทราบ' : ''}</p><span><small>ค่าไฟฐาน</small><b>{formatNumber(summary.bill.energyCharge, 2)} ฿</b></span><span><small>ค่าบริการ</small><b>{formatNumber(summary.bill.serviceCharge, 2)} ฿</b></span><span><small>Ft</small><b>{formatNumber(summary.bill.ftCharge, 2)} ฿</b></span><span><small>VAT</small><b>{formatNumber(summary.bill.vat, 2)} ฿</b></span><span className="builder-bill-total"><small>รวมโดยประมาณ</small><b>{formatNumber(summary.bill.total, 2)} ฿</b></span></section></details>
 
-      <section className="builder-workspace">
-        <aside className="builder-catalog glass-panel">
-          <header className="builder-panel-heading"><div><span>01</span><h2>เลือกเครื่องใช้ไฟฟ้า</h2></div><em>{catalogState.loading ? 'กำลังโหลด' : `${catalogState.pagination.total} รุ่น`}</em></header>
+<div className="builder-mobile-nav" aria-label="มุมมองเครื่องใช้ไฟฟ้า"><button type="button" aria-pressed={mobilePanel === 'home'} onClick={() => setMobilePanel('home')}>ในบ้าน ({homeItems.length})</button><button type="button" aria-pressed={mobilePanel === 'catalog'} onClick={() => setMobilePanel('catalog')}>เพิ่มจากแคตตาล็อก</button></div>
+      <section className={`builder-workspace show-${mobilePanel}`}>
+        <aside className="builder-catalog builder-panel" aria-label="แคตตาล็อกเครื่องใช้ไฟฟ้า">
+          <header className="builder-panel-heading"><div><h2>เลือกเครื่องใช้ไฟฟ้า</h2></div><em>{catalogState.loading ? 'กำลังโหลด' : `${catalogState.pagination.total} รุ่น`}</em></header>
           <label className="builder-search"><i><Search aria-hidden="true" /></i><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ค้นหายี่ห้อ รุ่น หรือประเภท..." aria-label="ค้นหาเครื่องใช้ไฟฟ้า" /></label>
-          <div className="builder-tabs" aria-label="หมวดหมู่เครื่องใช้ไฟฟ้า"><Button variant="ghost" className={category === null ? 'selected' : ''} onClick={() => setCategory(null)}>ทั้งหมด</Button>{catalogState.categories.map((item) => <Button variant="ghost" className={category === item.slug ? 'selected' : ''} onClick={() => setCategory(item.slug)} key={item.slug}>{item.name}</Button>)}</div>
+          <div className="builder-tabs" aria-label="หมวดหมู่เครื่องใช้ไฟฟ้า"><Button variant="ghost" aria-pressed={category === null} className={category === null ? 'selected' : ''} onClick={() => setCategory(null)}>ทั้งหมด</Button>{catalogState.categories.map((item) => <Button variant="ghost" aria-pressed={category === item.slug} className={category === item.slug ? 'selected' : ''} onClick={() => setCategory(item.slug)} key={item.slug}>{item.name}</Button>)}</div>
           {catalogState.loading && <div className="builder-catalog-state" role="status" aria-live="polite"><span className="catalog-spinner" aria-hidden="true" />กำลังโหลดรายการเครื่องใช้ไฟฟ้า...</div>}
           {!catalogState.loading && catalogState.error && <div className="builder-catalog-state error" role="alert"><b>โหลดแคตตาล็อกไม่สำเร็จ</b><span>{catalogState.error}</span><Button variant="outline" onClick={() => void loadCatalog(1, false)}>ลองอีกครั้ง</Button></div>}
           {!catalogState.loading && !catalogState.error && catalogState.items.length === 0 && <div className="builder-catalog-state" role="status"><b>ไม่พบเครื่องใช้ไฟฟ้า</b><span>ลองคำค้นหาอื่น หรือเลือกหมวดทั้งหมด</span></div>}
           {!catalogState.loading && !catalogState.error && catalogState.items.length > 0 && <><div className="builder-catalog-list">{catalogState.items.map((item) => { const energy = item.energySpec ? formatCatalogEnergySpec(item.energySpec) : null; return <Card className="builder-appliance" key={item.id}><div className="builder-product-image"><Image src={item.image} alt={`${item.brand} ${item.model}`} width={160} height={120} /></div><div className="builder-product-copy"><span>{item.brand}</span><b>{item.name}</b><em>{item.detail}</em><small>{item.model}</small></div><strong>{energy?.value ?? '—'}<small>{energy?.unit ?? 'ไม่มีข้อมูล'}</small></strong><Button variant="ghost" size="icon" disabled={readOnly || !canMutate} onClick={() => addToHome(item)} aria-label={`เพิ่ม ${item.name}`}><Plus aria-hidden="true" /></Button></Card>; })}</div>{catalogState.loadMoreError && <p className="builder-load-more-error" role="alert">{catalogState.loadMoreError} <Button variant="ghost" onClick={() => void loadCatalog(catalogState.pagination.page + 1, true)}>ลองอีกครั้ง</Button></p>}{catalogState.pagination.hasMore && <Button className="builder-load-more" variant="outline" disabled={catalogState.loadingMore} onClick={() => void loadCatalog(catalogState.pagination.page + 1, true)}>{catalogState.loadingMore ? 'กำลังโหลด...' : 'โหลดเพิ่ม'}</Button>}</>}
         </aside>
 
-        <section className="builder-home glass-panel">
-          <header className="builder-panel-heading"><div><span>02</span><h2>บ้านของฉัน</h2></div><em>{homeItems.length ? `${homeItems.length} รายการ` : 'กด + เพื่อเพิ่มอุปกรณ์'}</em></header>
-          <div className={`builder-dropzone ${homeItems.length ? 'has-items' : ''}`}>{homeItems.length === 0 ? <div className="builder-empty"><i><Plus aria-hidden="true" /></i><h3>เริ่มสร้างบ้านพลังงานของคุณ</h3><p>กดเครื่องหมายบวกบนการ์ดเครื่องใช้ไฟฟ้า<br />เพื่อเพิ่มเข้าบ้านของคุณ</p><span>ข้อมูลจะคำนวณใหม่แบบทันที</span></div> : <div className="builder-home-list">{homeItems.map((item) => {
+        <section className="builder-home builder-panel">
+          <header className="builder-panel-heading"><div><h2>บ้านของฉัน</h2></div><em>{homeItems.length ? `${homeItems.length} รายการ` : 'กด + เพื่อเพิ่มอุปกรณ์'}</em></header>
+          <div className={`builder-dropzone ${homeItems.length ? 'has-items' : ''}`}>{autosaveState.phase === 'idle' || autosaveState.phase === 'loading' ? <div className="builder-catalog-state" role="status">กำลังโหลดอุปกรณ์ในบ้าน…</div> : homeItems.length === 0 ? <div className="builder-empty"><i><Plus aria-hidden="true" /></i><h3>ยังไม่มีเครื่องใช้ไฟฟ้า</h3><p>กดเครื่องหมายบวกบนการ์ดเครื่องใช้ไฟฟ้า<br />เพื่อเพิ่มเข้าบ้านของคุณ</p><span>บันทึกอัตโนมัติเมื่อเพิ่มหรือแก้ไขอุปกรณ์</span>{!readOnly && <Button className="builder-empty-add" onClick={() => setMobilePanel('catalog')}>เลือกเครื่องใช้ไฟฟ้า <Plus aria-hidden="true" /></Button>}</div> : <div className="builder-home-list">{homeItems.map((item) => {
             const kwh = itemEnergyById.get(item.instanceId) ?? 0;
             const profile = getUsageProfile(item.usageProfileId);
             const schedule = getHomeUsageSchedule(item);
@@ -310,6 +313,6 @@ function HouseholdMyHomeContent({
           <footer className="builder-method"><i><Info aria-hidden="true" /></i><p><b>วิธีคำนวณประมาณการ</b><span>เลือกสูตรตามชนิดอุปกรณ์ ใช้ค่า profile มาตรฐาน และคิดค่าไฟตาม tariff บ้านอยู่อาศัยที่มีผลในเดือนนี้</span></p></footer>
         </section>
       </section>
-    </section>
-  </main>;
+    </main>
+  </div>;
 }

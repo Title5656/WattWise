@@ -17,8 +17,8 @@ import { WattWiseSidebar } from './WattWiseSidebar';
 
 function AccountShell({ active, title, children }: { active: 'profile' | 'settings'; title: string; children: ReactNode }) {
   return <div className="dashboard-shell"><WattWiseSidebar active={active} />
-    <main className="dashboard-content account-content">
-      <header className="account-heading"><p className="kicker">WATTWISE · ACCOUNT</p><h1>{title}</h1></header>{children}
+    <main className="dashboard-content account-content" id="page-content" tabIndex={-1}>
+      <header className="account-heading"><p className="kicker">บัญชีผู้ใช้</p><h1>{title}</h1></header>{children}
     </main>
   </div>;
 }
@@ -50,7 +50,7 @@ export function ProfilePage() {
   const context = useHouseholdMemberships();
   const [message, setMessage] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  return <AccountShell active="profile" title="Profile · บัญชีและบ้านของคุณ">
+  return <AccountShell active="profile" title="บัญชีและบ้านของคุณ">
     {context.phase !== 'ready' || !context.user ? <HouseholdAccessState embedded phase={context.phase === 'ready' ? 'error' : context.phase} error={context.error} onRefresh={() => void context.refresh()} /> : <>
       <UserCard user={context.user} />
       <Card className="account-card account-form-card"><h2>ชื่อที่ใช้แสดง</h2>
@@ -90,7 +90,7 @@ export function NewHouseholdPage() {
 
 export function SettingsPage({ logoutEnabled }: { logoutEnabled: boolean }) {
   const context = useHouseholdMemberships();
-  return <AccountShell active="settings" title="Settings · ตั้งค่า">
+  return <AccountShell active="settings" title="ตั้งค่า">
     {context.phase !== 'ready' || !context.user ? <HouseholdAccessState embedded phase={context.phase === 'ready' ? 'error' : context.phase} error={context.error} onRefresh={() => void context.refresh()} /> : <>
       <UserCard user={context.user} />
       <Card className="account-card account-form-card"><h2>การเข้าสู่ระบบ</h2>

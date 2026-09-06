@@ -31,7 +31,8 @@ test('sidebar footer is a useful My Home status link', async () => {
   assert.match(sidebar, /href=\{myHomePath\}/);
   assert.match(sidebar, /householdMyHomePath\(householdId\)/);
   assert.match(sidebar, /aria-label="ไปจัดการอุปกรณ์ใน My Home"/);
-  assert.match(sidebar, /อุปกรณ์ · ออนไลน์/);
+  assert.match(sidebar, /รายการในบ้าน/);
+  assert.doesNotMatch(sidebar, /ออนไลน์|LIVE|BUILD/);
   assert.doesNotMatch(sidebar, /เปิดโปรไฟล์|<i>WP<\/i>/);
   assert.match(dashboard, /householdId=\{householdId\} homeItemCount=\{homeLoading \? undefined : homeItems\.length\}/);
   assert.match(myHome, /householdId=\{householdId\} homeItemCount=\{autosaveState\.phase === 'loading' \? undefined : homeItems\.length\}/);

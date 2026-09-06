@@ -17,9 +17,6 @@ test('readability-critical copy uses the shared minimum type scale', async () =>
   assert.match(styles, /--text-body:\s*14px/);
 
   const selectors = [
-    '.metric-title small',
-    '.metric-value span',
-    '.bar-column small',
     '.builder-summary small',
     '.builder-summary em',
     '.builder-bill-breakdown small',
@@ -31,10 +28,8 @@ test('readability-critical copy uses the shared minimum type scale', async () =>
     '.number-stepper-control small',
     '.save-pill',
     '.back-status',
-    '.side-nav a small',
     '.sidebar-account small',
     '.builder-method span',
-    '.sidebar-account>i',
     '.dashboard-header>div>span',
     '.device-empty b',
     '.insight-action',
@@ -76,16 +71,10 @@ test('interactive controls keep a 44px touch target', async () => {
     '.builder-usage-schedule-header button',
     '.number-stepper-control button',
     '.monthly-record-actions button',
-    '.bill-form-header button',
-    '.mobile-sidebar-toggle',
-    '.sidebar-close',
-    '.notify',
-    '.home-status button',
     '.sidebar-account',
     '.insight-action',
     '.household-switcher select',
     '.household-choice-card a',
-    '.household-create-card button',
     '.autosave-message button',
   ];
 
