@@ -43,6 +43,8 @@ export function DailyLoadChart({ values, average }: { values: number[]; average:
     return <svg viewBox={`0 0 ${width} ${height}`} role="group" aria-labelledby={`${chartId}-title ${chartId}-description`}>
       <title id={`${chartId}-title`}>โหลดไฟภายในบ้านตามช่วงเวลา</title>
       <desc id={`${chartId}-description`}>ประมาณการทุก 2 ชั่วโมงจากเวลาใช้งานที่ตั้งไว้ ไม่ใช่ค่าจากมิเตอร์สด โหลดเฉลี่ย {average.toFixed(2)} kW โหลดสูงสุด {peak.toFixed(2)} kW ใช้ Tab เลือกจุดเพื่ออ่านค่า</desc>
+      <defs><linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity="0.26" /><stop offset="100%" stopColor="var(--primary)" stopOpacity="0.03" /></linearGradient></defs>
+      <polygon points={`${left},${bottom} ${values.map((value, index) => `${x(index)},${y(value)}`).join(' ')} ${x(values.length - 1)},${bottom}`} fill={`url(#${chartId}-fill)`} aria-hidden="true" />
       {[0, 1, 2, 3, 4].map(tick => <g key={tick} aria-hidden="true">
         <line className="usage-grid" x1={left} x2={right} y1={y(step * tick)} y2={y(step * tick)} />
         <text className="usage-time" x={left - 10} y={y(step * tick) + 4} textAnchor="end">{Number((step * tick).toFixed(3))}</text>

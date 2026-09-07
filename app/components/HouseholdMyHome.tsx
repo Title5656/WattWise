@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { ArrowLeft, Info, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, Coins, House, Info, Plus, Search, Sun, Trash2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,7 @@ import { getUsageProfile } from '@/lib/usage-profiles';
 import { scheduleHours, setAllDayUsageSchedule, toggleUsagePeriod, USAGE_PERIODS, updateUsagePeriodHours, type UsagePeriod } from '@/lib/usage-schedule';
 import { HouseholdAccessState } from './HouseholdAccessState';
 import { HouseholdIdentityBar } from './HouseholdIdentityBar';
+import { MetricCard } from './MetricCard';
 import { WattWiseSidebar } from './WattWiseSidebar';
 import { useHouseholdContext } from './use-household-memberships';
 
@@ -281,8 +282,11 @@ function HouseholdMyHomeContent({
       {autosaveState.phase === 'conflict' && <section className="autosave-message conflict" role="alert"><div><b>My Home มีข้อมูลเวอร์ชันใหม่กว่า</b><span>ฉบับร่างของคุณยังอยู่ครบ ระบบจะไม่รวมข้อมูลหรือบันทึกซ้ำอัตโนมัติ{autosaveState.currentRevision === null ? '' : ` · เวอร์ชันล่าสุด ${autosaveState.currentRevision}`}</span></div><Button variant="outline" onClick={discardConflictDraft}>ละทิ้งฉบับร่างและโหลดใหม่</Button></section>}
       {autosaveState.phase === 'retryable-error' && <section className="autosave-message error" role="alert"><div><b>บันทึกไม่สำเร็จชั่วคราว</b><span>ฉบับร่างยังอยู่ในอุปกรณ์นี้ กรุณาลองใหม่เมื่อการเชื่อมต่อพร้อม</span></div><Button variant="outline" onClick={retryAutosave}>ลองบันทึกอีกครั้ง</Button></section>}
 
-      <section className="builder-summary" aria-label="สรุปบ้านจำลอง" aria-busy={homeLoading}>
-        <article><span><small>อุปกรณ์ในบ้าน</small><strong>{homeLoading ? '—' : summary.totalUnits}</strong><em>เครื่อง</em></span></article><article><span><small>พลังงานต่อเดือน</small><strong>{homeLoading ? '—' : formatNumber(summary.monthlyKwh, 1)}</strong><em>kWh</em></span></article><article className="bill"><span><small>ค่าไฟโดยประมาณ</small><strong>{homeLoading ? '—' : formatNumber(summary.monthlyBill)}</strong><em>บาท / เดือน</em></span></article><article><span><small>พลังงานเฉลี่ยต่อวัน</small><strong>{homeLoading ? '—' : formatNumber(summary.dailyKwh, 1)}</strong><em>kWh</em></span></article>
+      <section className="metric-grid builder-summary" aria-label="สรุปบ้านจำลอง" aria-busy={homeLoading}>
+        <MetricCard icon={House} label="อุปกรณ์ในบ้าน" value={homeLoading ? '—' : summary.totalUnits} unit="เครื่อง" detail="รายการในบ้านหลังนี้" tone="blue" />
+        <MetricCard icon={Zap} label="พลังงานต่อเดือน" value={homeLoading ? '—' : formatNumber(summary.monthlyKwh, 1)} unit="kWh" detail="ตามรูปแบบการใช้งาน" />
+        <MetricCard icon={Coins} label="ค่าไฟโดยประมาณ" value={homeLoading ? '—' : formatNumber(summary.monthlyBill)} unit="บาท" detail="ต่อเดือน · รวมค่าบริการ Ft และ VAT" tone="orange" />
+        <MetricCard icon={Sun} label="พลังงานเฉลี่ยต่อวัน" value={homeLoading ? '—' : formatNumber(summary.dailyKwh, 1)} unit="kWh" detail="ประมาณการต่อวัน" tone="teal" />
       </section>
       <details className="bill-disclosure" hidden={homeLoading}><summary>รายละเอียดการคำนวณค่าไฟ</summary><section className="builder-bill-breakdown" aria-label="รายละเอียดค่าไฟ"><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'}{summary.bill.tariffStatus === 'latest_known' ? ' · ใช้ข้อมูลล่าสุดที่ทราบ' : ''}</p><span><small>ค่าไฟฐาน</small><b>{formatNumber(summary.bill.energyCharge, 2)} ฿</b></span><span><small>ค่าบริการ</small><b>{formatNumber(summary.bill.serviceCharge, 2)} ฿</b></span><span><small>Ft</small><b>{formatNumber(summary.bill.ftCharge, 2)} ฿</b></span><span><small>VAT</small><b>{formatNumber(summary.bill.vat, 2)} ฿</b></span><span className="builder-bill-total"><small>รวมโดยประมาณ</small><b>{formatNumber(summary.bill.total, 2)} ฿</b></span></section></details>
 

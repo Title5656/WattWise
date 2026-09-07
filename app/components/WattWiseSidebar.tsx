@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { House, LayoutDashboard, Settings, UserRound } from 'lucide-react';
+import { House, LayoutDashboard, Leaf, Settings, UserRound } from 'lucide-react';
 import { householdDashboardPath, householdMyHomePath } from '@/lib/household-ui';
 
 type ActivePage = 'status' | 'home' | 'profile' | 'settings';
@@ -23,5 +23,6 @@ export function WattWiseSidebar({ active, householdId, homeItemCount }: { active
       {links.map((link) => { const Icon = link.icon; return <Link className={active === link.id ? 'active' : ''} href={link.href} key={link.id} aria-current={active === link.id ? 'page' : undefined}><Icon aria-hidden="true" /><span>{link.label}</span></Link>; })}
     </nav>
     <Link className="sidebar-account" href={myHomePath} aria-label="ไปจัดการอุปกรณ์ใน My Home"><House aria-hidden="true" /><small>{!householdId ? 'เลือกบ้าน' : homeItemCount === undefined ? 'My Home' : `${homeItemCount} รายการในบ้าน`}</small></Link>
+    <div className="sidebar-footer"><Leaf aria-hidden="true" /><span>WattWise<small>วางแผนพลังงานในบ้าน</small></span></div>
   </header>;
 }

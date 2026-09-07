@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { ArrowRight, ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowRight, ChevronRight, Coins, House, Pencil, Plus, Sun, Trash2, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { createDashboardLifecycle, runDashboardMutation } from '@/lib/dashboard-lifecycle';
@@ -20,6 +20,7 @@ import {
 import { createLatestRequestTracker, isAbortError } from '@/lib/latest-request';
 import { formatBillingMonthLabel, getBillingMonth, selectRecentRecords, type MonthlyEnergyRecord } from '@/lib/monthly-history';
 import { HouseholdAccessState } from './HouseholdAccessState';
+import { MetricCard } from './MetricCard';
 import { DailyLoadChart } from './DailyLoadChart';
 import { HouseholdIdentityBar } from './HouseholdIdentityBar';
 import { WattWiseSidebar } from './WattWiseSidebar';
@@ -220,17 +221,21 @@ function HouseholdDashboardContent({
     <WattWiseSidebar active="status" householdId={householdId} homeItemCount={homeLoading ? undefined : homeItems.length} />
     <main className="dashboard-content" id="page-content" tabIndex={-1}>
       <header className="dashboard-header" id="overview">
-        <div><p className="kicker">ภาพรวมพลังงาน · {household.name}</p><h1>บ้านนี้ใช้ไฟเท่าไร</h1><span>{homeLoading ? 'กำลังเชื่อมข้อมูล My Home...' : `อัปเดตจาก My Home · ${summary.totalUnits} เครื่อง`}</span></div>
+        <div><p className="kicker">ภาพรวมพลังงาน · {household.name}</p><h1>สวัสดี, ยินดีต้อนรับสู่ WattWise</h1><span>{homeLoading ? 'กำลังเชื่อมข้อมูล My Home...' : `อัปเดตจาก My Home · ${summary.totalUnits} เครื่อง`}</span></div>
         <HouseholdIdentityBar user={user} household={household} households={households} destination="dashboard" />
       </header>
 
       {!canEdit && <section className="read-only-banner" role="status"><b>คุณมีสิทธิ์ดูข้อมูลเท่านั้น</b><span>บทบาทผู้ชมไม่สามารถแก้ไขอุปกรณ์ การใช้งาน หรือบิลของบ้านนี้ได้</span></section>}
       {homeLoading ? <section className="dashboard-loading" role="status"><span className="state-spinner" />กำลังโหลดอุปกรณ์และบิลของบ้าน…</section> : <>
       {!homeItems.length && <section className="dashboard-empty"><div><h2>เริ่มจากเครื่องใช้ไฟฟ้าในบ้าน</h2><p>เพิ่มอุปกรณ์และเวลาใช้งาน เพื่อประมาณค่าไฟของบ้านนี้</p></div><Button asChild><Link href={myHomePath}>เพิ่มเครื่องใช้ไฟฟ้า <Plus aria-hidden="true" /></Link></Button></section>}
-      <section className="energy-overview" aria-label="ข้อมูลพลังงานสำคัญ">
-        <div className="bill-estimate"><p className="kicker">ค่าไฟตามที่ตั้งไว้ · ต่อเดือน</p><div className="estimate-value"><strong>{homeItems.length ? formatNumber(summary.monthlyBill) : '—'}</strong><span>บาท</span></div><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'} · รวมค่าบริการ Ft และ VAT</p><Link href={myHomePath}>ปรับอุปกรณ์และเวลาใช้งาน <ArrowRight aria-hidden="true" /></Link></div>
-        <div className="estimate-details"><div className="estimate-range"><h2>ช่วงค่าไฟโดยประมาณ</h2><b>{hasEstimatedRange ? '฿' + formatNumber(summary.monthlyBillRange.low) + '–' + formatNumber(summary.monthlyBillRange.high) : '—'}</b><p>{hasEstimatedRange ? 'เมื่อการใช้งานจริงต่างจากที่ตั้งไว้ ±10%' : 'เพิ่มอุปกรณ์เพื่อดูช่วงค่าไฟ'}</p></div><dl className="energy-facts"><div><dt>พลังงานต่อเดือน</dt><dd>{formatNumber(summary.monthlyKwh, 1)} <small>kWh</small></dd></div><div><dt>พลังงานต่อวัน</dt><dd>{formatNumber(summary.dailyKwh, 1)} <small>kWh</small></dd></div><div><dt>เครื่องใช้ไฟฟ้า</dt><dd>{summary.totalUnits} <small>เครื่อง</small></dd></div></dl></div>
+      <section className="metric-grid" aria-label="ข้อมูลพลังงานสำคัญ">
+        <MetricCard icon={Zap} label="พลังงานต่อเดือน" value={formatNumber(summary.monthlyKwh, 1)} unit="kWh" detail="ประมาณการจากอุปกรณ์ในบ้าน" />
+        <MetricCard icon={Coins} label="ค่าไฟโดยประมาณ" value={homeItems.length ? formatNumber(summary.monthlyBill) : '—'} unit="บาท" detail="ต่อเดือน · รวมค่าบริการ Ft และ VAT" tone="orange" />
+        <MetricCard icon={Sun} label="พลังงานต่อวัน" value={formatNumber(summary.dailyKwh, 1)} unit="kWh" detail="ตามรูปแบบการใช้งานที่ตั้งไว้" tone="teal" />
+        <MetricCard icon={House} label="เครื่องใช้ไฟฟ้า" value={summary.totalUnits} unit="เครื่อง" detail="จากรายการใน My Home" tone="blue" />
       </section>
+
+      <section className="dashboard-panels" aria-label="รายละเอียดพลังงาน">
 
       {homeItems.length > 0 && <Card className="load-card" id="live-load">
         <header><div><p className="kicker">ช่วงเวลาการใช้ไฟ</p><h2>โหลดไฟภายในบ้าน</h2><span>ประมาณการจากช่วงเวลาที่ตั้งไว้ · วันทั่วไป</span></div><span className="load-period">24 ชั่วโมง</span></header>
@@ -238,9 +243,13 @@ function HouseholdDashboardContent({
         <DailyLoadChart values={values} average={averageLoad} />
       </Card>}
 
-      <section className="overview-grid" id="monthly">
-        <Card className="devices-card" id="devices"><header className="section-heading"><div><p className="kicker">สัดส่วนพลังงาน</p><h2>อุปกรณ์ที่ใช้ไฟสูงสุด</h2><span>เรียงตามพลังงานต่อเดือน</span></div><Button asChild variant="ghost"><Link href={myHomePath} aria-label="ดูอุปกรณ์ทั้งหมด">ทั้งหมด <ChevronRight aria-hidden="true" /></Link></Button></header><div className="device-list">{topDevices.length ? topDevices.map((device, index) => <div className="device-row" key={`${device.name}-${index}`}><div className="device-product-thumb"><Image src={device.image} alt="" width={72} height={72} /></div><div className="device-copy"><b>{device.name}</b><small>{device.detail}</small><span><i style={{width: `${device.width}%`}} /></span></div><div className="device-usage"><b>{device.energy}</b><small>{device.share}</small></div></div>) : <div className="device-empty"><i><Plus aria-hidden="true" /></i><div><b>ยังไม่มีเครื่องใช้ไฟฟ้า</b><span>เพิ่มอุปกรณ์ใน My Home แล้วข้อมูลจะปรากฏที่นี่</span></div><Button asChild variant="link"><Link href={myHomePath}>ไปที่ My Home <ChevronRight aria-hidden="true" /></Link></Button></div>}</div></Card>
-        <Card className="bill-card">
+
+        <Card className="devices-card" id="devices"><header className="section-heading"><div><p className="kicker">สัดส่วนพลังงาน</p><h2>อุปกรณ์ที่ใช้ไฟสูงสุด</h2><span>เรียงตามพลังงานต่อเดือน</span></div><Button asChild variant="ghost"><Link href={myHomePath} aria-label="ดูอุปกรณ์ทั้งหมด">ทั้งหมด <ChevronRight aria-hidden="true" /></Link></Button></header><div className="device-list">{topDevices.length ? topDevices.map((device, index) => <div className="device-row" key={`${device.name}-${index}`}><span className="device-rank" aria-label={`อันดับ ${index + 1}`}>{index + 1}</span><div className="device-product-thumb"><Image src={device.image} alt="" width={72} height={72} /></div><div className="device-copy"><b>{device.name}</b><small>{device.detail}</small><span><i style={{width: `${device.width}%`}} /></span></div><div className="device-usage"><b>{device.energy}</b><small>{device.share}</small></div></div>) : <div className="device-empty"><i><Plus aria-hidden="true" /></i><div><b>ยังไม่มีเครื่องใช้ไฟฟ้า</b><span>เพิ่มอุปกรณ์ใน My Home แล้วข้อมูลจะปรากฏที่นี่</span></div><Button asChild variant="link"><Link href={myHomePath}>ไปที่ My Home <ChevronRight aria-hidden="true" /></Link></Button></div>}</div></Card>
+      <Card className="energy-overview" aria-label="ค่าไฟโดยประมาณ">
+        <div className="bill-estimate"><p className="kicker">ค่าไฟตามที่ตั้งไว้ · ต่อเดือน</p><div className="estimate-value"><strong>{homeItems.length ? formatNumber(summary.monthlyBill) : '—'}</strong><span>บาท</span></div><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'} · รวมค่าบริการ Ft และ VAT</p><Link href={myHomePath}>ปรับอุปกรณ์และเวลาใช้งาน <ArrowRight aria-hidden="true" /></Link></div>
+        <div className="estimate-details"><div className="estimate-range"><h2>ช่วงค่าไฟโดยประมาณ</h2><b>{hasEstimatedRange ? '฿' + formatNumber(summary.monthlyBillRange.low) + '–' + formatNumber(summary.monthlyBillRange.high) : '—'}</b><p>{hasEstimatedRange ? 'เมื่อการใช้งานจริงต่างจากที่ตั้งไว้ ±10%' : 'เพิ่มอุปกรณ์เพื่อดูช่วงค่าไฟ'}</p></div></div>
+      </Card>
+        <Card className="bill-card" id="monthly">
           <header className="section-heading"><div><p className="kicker">บันทึกค่าไฟ</p><h2>ค่าไฟรายเดือน</h2><span>เปรียบเทียบค่าประมาณกับบิลจริงที่บันทึกไว้</span></div>{canEdit && <Button type="button" variant="ghost" disabled={billSaving} onClick={() => billFormOpen ? closeBillForm() : openBillForm()}>{billFormOpen ? 'ปิดฟอร์ม' : 'เพิ่มบิลจริง'} {billFormOpen ? <X aria-hidden="true" /> : <Plus aria-hidden="true" />}</Button>}</header>
 
           {canEdit && billFormOpen && <form className="bill-form" onSubmit={saveBill}><div className="bill-form-header"><b>{billEditingMonth ? 'แก้ไขบิลจริง' : 'เพิ่มบิลจริง'}</b></div><label>เดือน<input type="month" value={billMonth} max={getBillingMonth()} onChange={(event) => setBillMonth(event.target.value)} disabled={Boolean(billEditingMonth)} required /></label><label>ยอดบิลจริง (บาท)<input type="number" min="0" step="0.01" value={actualBill} onChange={(event) => setActualBill(event.target.value)} placeholder="เช่น 512.50" required /></label><label>ใช้ไฟจริง (kWh) <small>ไม่บังคับ</small><input type="number" min="0" step="0.01" value={actualKwh} onChange={(event) => setActualKwh(event.target.value)} placeholder="เช่น 120" /></label>{billError && <p className="bill-form-error" role="alert">{billError}</p>}<div className="bill-form-actions"><Button type="button" variant="ghost" onClick={closeBillForm}>ยกเลิก</Button><Button type="submit" disabled={billSaving}>{billSaving ? 'กำลังบันทึก...' : 'บันทึกบิลจริง'}</Button></div></form>}
