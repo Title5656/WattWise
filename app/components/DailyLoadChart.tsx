@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 
-/** Linear samples preserve the estimated loads without invented curve overshoots. */
+/** Display curves stay within each pair of estimated samples; source loads are unchanged. */
 export function DailyLoadChart({ values, average }: { values: number[]; average: number }) {
   const id = useId();
   const container = useRef<HTMLDivElement>(null);
@@ -33,24 +33,29 @@ export function DailyLoadChart({ values, average }: { values: number[]; average:
     const bottom = height - 32;
     const x = (index: number) => left + index * (right - left) / Math.max(values.length - 1, 1);
     const y = (value: number) => bottom - value / ceiling * (bottom - 28);
-    const selected = activeIndex !== null && activeIndex < values.length ? activeIndex : null;
+    const selected = activeIndex !== null && activeIndex < values.length ? activeIndex : peak > 0 ? peakIndex : null;
     const tooltipWidth = compact ? 130 : 154;
     const tooltipX = selected === null ? 0 : Math.max(left, Math.min(x(selected) - tooltipWidth / 2, right - tooltipWidth));
     const tooltipY = selected === null ? 0 : Math.max(4, y(values[selected]) - 78);
     const chartId = id;
     const sampleWidth = (right - left) / Math.max(values.length - 1, 1);
+    const curve = values.map((value, index) => {
+      if (index === 0) return `M ${x(index)} ${y(value)}`;
+      const middle = (x(index - 1) + x(index)) / 2;
+      return `C ${middle} ${y(values[index - 1])} ${middle} ${y(value)} ${x(index)} ${y(value)}`;
+    }).join(' ');
 
     return <svg viewBox={`0 0 ${width} ${height}`} role="group" aria-labelledby={`${chartId}-title ${chartId}-description`}>
       <title id={`${chartId}-title`}>โหลดไฟภายในบ้านตามช่วงเวลา</title>
       <desc id={`${chartId}-description`}>ประมาณการทุก 2 ชั่วโมงจากเวลาใช้งานที่ตั้งไว้ ไม่ใช่ค่าจากมิเตอร์สด โหลดเฉลี่ย {average.toFixed(2)} kW โหลดสูงสุด {peak.toFixed(2)} kW ใช้ Tab เลือกจุดเพื่ออ่านค่า</desc>
-      <defs><linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--primary)" stopOpacity="0.26" /><stop offset="100%" stopColor="var(--primary)" stopOpacity="0.03" /></linearGradient></defs>
-      <polygon points={`${left},${bottom} ${values.map((value, index) => `${x(index)},${y(value)}`).join(' ')} ${x(values.length - 1)},${bottom}`} fill={`url(#${chartId}-fill)`} aria-hidden="true" />
+      <defs><linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--leaf)" stopOpacity="0.34" /><stop offset="65%" stopColor="var(--leaf)" stopOpacity="0.14" /><stop offset="100%" stopColor="var(--leaf)" stopOpacity="0.02" /></linearGradient></defs>
+      <path d={`${curve} L ${x(values.length - 1)} ${bottom} L ${left} ${bottom} Z`} fill={`url(#${chartId}-fill)`} aria-hidden="true" />
       {[0, 1, 2, 3, 4].map(tick => <g key={tick} aria-hidden="true">
         <line className="usage-grid" x1={left} x2={right} y1={y(step * tick)} y2={y(step * tick)} />
         <text className="usage-time" x={left - 10} y={y(step * tick) + 4} textAnchor="end">{Number((step * tick).toFixed(3))}</text>
       </g>)}
       <line className="usage-average" x1={left} x2={right} y1={y(average)} y2={y(average)} aria-hidden="true" />
-      <polyline className="usage-line" points={values.map((value, index) => `${x(index)},${y(value)}`).join(' ')} aria-hidden="true" />
+      <path className="usage-line" d={curve} aria-hidden="true" />
       {selected !== null && <line className="usage-cursor" x1={x(selected)} x2={x(selected)} y1="20" y2={bottom} aria-hidden="true" />}
       {values.map((value, index) => {
         const isPeak = peak > 0 && index === peakIndex;
@@ -67,14 +72,14 @@ export function DailyLoadChart({ values, average }: { values: number[]; average:
               if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActiveIndex(index); }
             }}>
             {(isPeak || isActive) && <circle className="usage-peak-halo" cx={x(index)} cy={y(value)} r="9" />}
-            <circle className="usage-point" cx={x(index)} cy={y(value)} r={isActive || isPeak ? 4 : 2.5} />
+            <circle className="usage-point" cx={x(index)} cy={y(value)} r={isActive || isPeak ? 5 : 0} />
             <rect x={hitLeft} y="20" width={Math.min(x(index) + sampleWidth / 2, right + 10) - hitLeft} height={bottom - 20} fill="transparent" />
           </g>
-          {(!compact || index % 3 === 0 || index === values.length - 1) && <text className="usage-time" x={x(index)} y={height - 6} textAnchor="middle" aria-hidden="true">{time(index)}</text>}
+          {(index % (compact ? 3 : 2) === 0 || index === values.length - 1) && <text className="usage-time" x={x(index)} y={height - 6} textAnchor="middle" aria-hidden="true">{time(index)}</text>}
         </g>;
       })}
       {selected !== null && <g className="usage-tooltip" transform={`translate(${tooltipX} ${tooltipY})`} pointerEvents="none" aria-hidden="true">
-        <rect width={tooltipWidth} height="64" rx="7" />
+        <rect width={tooltipWidth} height="64" rx="12" />
         <text x="12" y="22">{time(selected)}{selected === peakIndex && peak > 0 ? ' · สูงสุด' : ''}</text>
         <text className="usage-tooltip-value" x="12" y="47">{values[selected].toFixed(2)} kW</text>
       </g>}

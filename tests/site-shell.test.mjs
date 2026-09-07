@@ -28,9 +28,18 @@ test('the root metadata and sidebar use the optimized WattWise logo', async () =
   }
 });
 
-test('public styles do not use blur-based glass rendering', async () => {
+test('glass rendering stays on outer shells while data cards remain opaque', async () => {
   const styles = await readProjectFile('app/globals.css');
 
-  assert.doesNotMatch(styles, /(?:-webkit-)?backdrop-filter\s*:/);
-  assert.doesNotMatch(styles, /filter\s*:\s*blur\s*\(/);
+  for (const rule of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (/(?:-webkit-)?backdrop-filter\s*:/.test(rule[2])) {
+      assert.ok(['.sidebar', '.dashboard-content', '.my-home-content'].includes(rule[1].trim()));
+    }
+  }
+  for (const selector of ['load-card', 'devices-card', 'bill-card', 'metric-card']) {
+    const rule = styles.match(new RegExp(`\\.${selector}\\s*\\{([^}]+)\\}`));
+    assert.ok(rule, `${selector} styles exist`);
+    assert.match(rule[1], /background:\s*var\(--surface\)/);
+  }
+  assert.doesNotMatch(styles, /(?:^|[;{\s])filter\s*:\s*blur\s*\(/);
 });
