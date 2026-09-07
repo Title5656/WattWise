@@ -57,7 +57,7 @@ html {
 }
 body {
   margin: 0;
-  background: url('/leaf-backdrop.svg') center / cover no-repeat, radial-gradient(ellipse at 65% 20%,#eef7ff 0,transparent 65%), #dfefed;
+  background: url('./assets/leaf-backdrop.svg') center / cover no-repeat, radial-gradient(ellipse at 65% 20%,#eef7ff 0,transparent 65%), #dfefed;
   color: var(--text);
   font-family: var(--font-noto-sans-thai),system-ui,sans-serif;
   font-size: 16px;
