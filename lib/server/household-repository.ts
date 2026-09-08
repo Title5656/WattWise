@@ -1,10 +1,12 @@
 import type { HouseholdRole } from './household-access.ts';
+import type { ResidentialTariffClass } from '../tariffs.ts';
 
 export type HouseholdSummary = {
   id: string;
   name: string;
   province: string | null;
   electricityProvider: string | null;
+  residentialTariffClass?: ResidentialTariffClass | null;
   role: HouseholdRole;
 };
 
@@ -13,12 +15,14 @@ type HouseholdRow = {
   name: string;
   province: string | null;
   electricityProvider: string | null;
+  residentialTariffClass: ResidentialTariffClass | null;
   role: HouseholdRole;
 };
 
 export async function listActiveHouseholds(db: D1Database, userId: number): Promise<HouseholdSummary[]> {
   const rows = await db.prepare(`SELECT households.public_id AS id, households.name AS name,
       households.province AS province, households.electricity_provider AS electricityProvider,
+      households.residential_tariff_class AS residentialTariffClass,
       household_members.role AS role
     FROM household_members
     INNER JOIN households ON households.id = household_members.household_id
@@ -36,6 +40,7 @@ export async function readActiveHousehold(
 ): Promise<HouseholdSummary | null> {
   const rows = await db.prepare(`SELECT households.public_id AS id, households.name AS name,
       households.province AS province, households.electricity_provider AS electricityProvider,
+      households.residential_tariff_class AS residentialTariffClass,
       household_members.role AS role
     FROM households
     INNER JOIN household_members ON household_members.household_id = households.id
@@ -54,14 +59,15 @@ export async function createHouseholdWithOwner(
     name: string;
     province: string | null;
     electricityProvider: string | null;
+    residentialTariffClass?: ResidentialTariffClass | null;
     now: number;
   },
 ): Promise<void> {
   await db.batch([
     db.prepare(`INSERT INTO households
-      (public_id, name, province, electricity_provider, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'active', ?, ?)`)
-      .bind(input.publicId, input.name, input.province, input.electricityProvider, input.now, input.now),
+      (public_id, name, province, electricity_provider, residential_tariff_class, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`)
+      .bind(input.publicId, input.name, input.province, input.electricityProvider, input.residentialTariffClass ?? null, input.now, input.now),
     db.prepare(`INSERT INTO household_members
       (household_id, user_id, role, created_at, updated_at)
       VALUES (last_insert_rowid(), ?, 'owner', ?, ?)`)
@@ -76,6 +82,7 @@ export async function updateActiveHousehold(
     name?: string;
     province?: string | null;
     electricityProvider?: string | null;
+    residentialTariffClass?: ResidentialTariffClass | null;
     now: number;
   },
 ): Promise<void> {
@@ -83,6 +90,7 @@ export async function updateActiveHousehold(
       name = CASE WHEN ? = 1 THEN ? ELSE name END,
       province = CASE WHEN ? = 1 THEN ? ELSE province END,
       electricity_provider = CASE WHEN ? = 1 THEN ? ELSE electricity_provider END,
+      residential_tariff_class = CASE WHEN ? = 1 THEN ? ELSE residential_tariff_class END,
       updated_at = ?
     WHERE id = ? AND status = 'active'`)
     .bind(
@@ -92,6 +100,8 @@ export async function updateActiveHousehold(
       patch.province ?? null,
       patch.electricityProvider === undefined ? 0 : 1,
       patch.electricityProvider ?? null,
+      patch.residentialTariffClass === undefined ? 0 : 1,
+      patch.residentialTariffClass ?? null,
       patch.now,
       householdId,
     )
@@ -110,6 +120,7 @@ function toHousehold(row: HouseholdRow): HouseholdSummary {
     name: row.name,
     province: row.province,
     electricityProvider: row.electricityProvider,
+    ...(row.residentialTariffClass ? { residentialTariffClass: row.residentialTariffClass } : {}),
     role: row.role,
   };
 }

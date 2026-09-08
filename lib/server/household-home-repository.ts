@@ -4,6 +4,7 @@ import type { MonthlyEnergyRecord } from '../monthly-history.ts';
 import { HouseholdForbiddenError, HouseholdNotFoundError } from './auth-errors.ts';
 import type { HouseholdRole } from './household-access.ts';
 import type { HouseholdSummary } from './household-repository.ts';
+import type { ResidentialTariffOptions, ResidentialTariffClass } from '../tariffs.ts';
 
 export type HouseholdHomeSnapshot = {
   household: HouseholdSummary;
@@ -29,6 +30,7 @@ type HouseholdApplianceIdentity = {
 
 export type HouseholdHomeValidationState = {
   currentRevision: number;
+  tariffOptions: ResidentialTariffOptions;
   existingItems: HouseholdApplianceIdentity[];
 };
 
@@ -37,6 +39,7 @@ type HouseholdHomeRow = Omit<CatalogRow, 'catalogKey'> & {
   householdName: string;
   householdProvince: string | null;
   householdElectricityProvider: string | null;
+  householdResidentialTariffClass: ResidentialTariffClass | null;
   householdRole: HouseholdRole;
   revision: number;
   id: number | null;
@@ -64,6 +67,8 @@ export async function readHouseholdHomeValidationState(
   userId: number,
 ): Promise<HouseholdHomeValidationState | null> {
   const rows = await db.prepare(`SELECT households.home_revision AS currentRevision,
+      households.electricity_provider AS electricityProvider,
+      households.residential_tariff_class AS residentialTariffClass,
       household_appliances.appliance_model_id AS modelId,
       household_appliances.instance_key AS instanceKey
     FROM households
@@ -75,11 +80,12 @@ export async function readHouseholdHomeValidationState(
     WHERE households.id = ? AND households.status = 'active'
     ORDER BY household_appliances.id`)
     .bind(userId, householdId)
-    .all<{ currentRevision: number; modelId: number | null; instanceKey: string | null }>();
+    .all<ResidentialTariffOptions & { currentRevision: number; modelId: number | null; instanceKey: string | null }>();
   const first = rows.results[0];
   if (!first) return null;
   return {
     currentRevision: first.currentRevision,
+    tariffOptions: { electricityProvider: first.electricityProvider, residentialTariffClass: first.residentialTariffClass },
     existingItems: rows.results.flatMap((row) => row.modelId === null || row.instanceKey === null
       ? []
       : [{ modelId: row.modelId, instanceKey: row.instanceKey }]),
@@ -95,6 +101,7 @@ export async function readHouseholdHomeSnapshot(
     db.prepare(`SELECT households.public_id AS householdPublicId,
         households.name AS householdName, households.province AS householdProvince,
         households.electricity_provider AS householdElectricityProvider,
+        households.residential_tariff_class AS householdResidentialTariffClass,
         household_members.role AS householdRole, households.home_revision AS revision,
         h.id, h.instance_key AS instanceKey, h.quantity,
         h.hours_per_day AS hoursPerDay, h.cycles_per_month AS cyclesPerMonth,
@@ -140,6 +147,7 @@ export async function readHouseholdHomeSnapshot(
     name: householdRow.householdName,
     province: householdRow.householdProvince,
     electricityProvider: householdRow.householdElectricityProvider,
+    ...(householdRow.householdResidentialTariffClass ? { residentialTariffClass: householdRow.householdResidentialTariffClass } : {}),
     role: householdRow.householdRole,
   };
   const items = snapshotRows.filter((row) => row.id !== null).map((row) => {

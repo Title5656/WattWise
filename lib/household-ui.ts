@@ -12,6 +12,7 @@ export type HouseholdMembership = {
   name: string;
   province: string | null;
   electricityProvider: string | null;
+  residentialTariffClass?: import('./tariffs.ts').ResidentialTariffClass | null;
   role: HouseholdRole;
 };
 

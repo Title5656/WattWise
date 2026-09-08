@@ -93,6 +93,7 @@ export const households = sqliteTable('households', {
   name: text('name').notNull(),
   province: text('province'),
   electricityProvider: text('electricity_provider'),
+  residentialTariffClass: text('residential_tariff_class', { enum: ['low_usage', 'standard'] }),
   tariffProductId: integer('tariff_product_id').references(() => tariffProducts.id, { onDelete: 'set null' }),
   homeRevision: integer('home_revision').notNull().default(0),
   status: text('status', { enum: ['active', 'quarantined', 'deleted'] }).notNull().default('active'),

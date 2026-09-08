@@ -8,7 +8,7 @@ import { Miniflare } from 'miniflare';
 import { createHouseholdHomeService } from '../lib/server/household-home-service.ts';
 
 const NOW = Date.parse('2026-08-15T00:00:00+07:00');
-const MIGRATIONS_TO_APPLY = /^(000[0-5]|000[89]|0010)_.*\.sql$/;
+const MIGRATIONS_TO_APPLY = /^(000[0-5]|000[89]|001[0-2])_.*\.sql$/;
 const user = {
   userId: 1,
   publicId: 'usr_d1_owner',

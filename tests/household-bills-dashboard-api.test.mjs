@@ -74,6 +74,15 @@ function setup() {
   };
 }
 
+test('dashboard uses the saved MEA low-use tariff', async () => {
+  const { dashboard, sqlite } = setup();
+  sqlite.exec("UPDATE households SET residential_tariff_class = 'low_usage' WHERE id = 10");
+  const response = await json(await dashboard.GET(request('/api/households/hh_alpha/dashboard'), { householdId: 'hh_alpha' }));
+  assert.equal(response.status, 200);
+  assert.equal(response.body.summary.bill.serviceCharge, 8.19);
+  assert.match(response.body.summary.bill.tariffLabel, /MEA.*1\.1/);
+});
+
 async function json(response) {
   return { status: response.status, body: await response.json() };
 }

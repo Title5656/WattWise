@@ -1,0 +1,1 @@
+ALTER TABLE `households` ADD `residential_tariff_class` text;

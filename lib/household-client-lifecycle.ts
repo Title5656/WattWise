@@ -180,6 +180,7 @@ export type HouseholdCreationInput = {
   name: string;
   province?: string | null;
   electricityProvider?: string | null;
+  residentialTariffClass?: import('./tariffs.ts').ResidentialTariffClass | null;
 };
 
 const initialCreationState: HouseholdCreationState = { phase: 'idle', error: '' };

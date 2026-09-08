@@ -193,7 +193,7 @@ function HouseholdMyHomeContent({
   }, [autosaveResources, autosaveRole, autosaveScopeKey, autosaveUserId, householdId]);
 
   const [mobilePanel, setMobilePanel] = useState<'home' | 'catalog'>('home');
-  const summary = calculateHomeSummary(homeItems);
+  const summary = calculateHomeSummary(homeItems, new Date(), household);
   const itemEnergyById = new Map(summary.itemCalculations.map((item) => [
     item.instanceId,
     item.calculation.monthlyEnergyKwh,
@@ -288,7 +288,7 @@ function HouseholdMyHomeContent({
         <MetricCard icon={Coins} label="ค่าไฟโดยประมาณ" value={homeLoading ? '—' : formatNumber(summary.monthlyBill)} unit="บาท" detail="ต่อเดือน · รวมค่าบริการ Ft และ VAT" tone="orange" />
         <MetricCard icon={Sun} label="พลังงานเฉลี่ยต่อวัน" value={homeLoading ? '—' : formatNumber(summary.dailyKwh, 1)} unit="kWh" detail="ประมาณการต่อวัน" tone="teal" />
       </section>
-      <details className="bill-disclosure" hidden={homeLoading}><summary>รายละเอียดการคำนวณค่าไฟ</summary><section className="builder-bill-breakdown" aria-label="รายละเอียดค่าไฟ"><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'}{summary.bill.tariffStatus === 'latest_known' ? ' · ใช้ข้อมูลล่าสุดที่ทราบ' : ''}</p><span><small>ค่าไฟฐาน</small><b>{formatNumber(summary.bill.energyCharge, 2)} ฿</b></span><span><small>ค่าบริการ</small><b>{formatNumber(summary.bill.serviceCharge, 2)} ฿</b></span><span><small>Ft</small><b>{formatNumber(summary.bill.ftCharge, 2)} ฿</b></span><span><small>VAT</small><b>{formatNumber(summary.bill.vat, 2)} ฿</b></span><span className="builder-bill-total"><small>รวมโดยประมาณ</small><b>{formatNumber(summary.bill.total, 2)} ฿</b></span></section></details>
+      <details className="bill-disclosure" hidden={homeLoading}><summary>รายละเอียดการคำนวณค่าไฟ</summary><section className="builder-bill-breakdown" aria-label="รายละเอียดค่าไฟ"><p>{summary.bill.tariffLabel ?? 'บ้านอยู่อาศัยทั่วไป'}{summary.bill.tariffStatus === 'latest_known' ? ' · ใช้ข้อมูลล่าสุดที่ทราบ' : ''}</p><span><small>ค่าไฟฐาน</small><b>{formatNumber(summary.bill.energyCharge, 2)} ฿</b></span><span><small>ค่าบริการ</small><b>{formatNumber(summary.bill.serviceCharge, 2)} ฿</b></span><span><small>Ft</small><b>{formatNumber(summary.bill.ftCharge, 2)} ฿</b></span><span><small>VAT</small><b>{formatNumber(summary.bill.vat, 2)} ฿</b></span><span className="builder-bill-total"><small>รวมโดยประมาณ</small><b>{formatNumber(summary.bill.total, 2)} ฿</b></span></section>{summary.bill.warnings.map((notice) => <p className="account-muted" key={notice.code}>{notice.message}</p>)}</details>
 
 <div className="builder-mobile-nav" aria-label="มุมมองเครื่องใช้ไฟฟ้า"><button type="button" aria-pressed={mobilePanel === 'home'} onClick={() => setMobilePanel('home')}>ในบ้าน ({homeItems.length})</button><button type="button" aria-pressed={mobilePanel === 'catalog'} onClick={() => setMobilePanel('catalog')}>เพิ่มจากแคตตาล็อก</button></div>
       <section className={`builder-workspace show-${mobilePanel}`}>
