@@ -45,6 +45,7 @@ export function createAuthDatabase() {
       name TEXT NOT NULL,
       province TEXT,
       electricity_provider TEXT,
+      residential_tariff_class TEXT,
       tariff_product_id INTEGER,
       home_revision INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL,

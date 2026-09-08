@@ -115,6 +115,29 @@ test('GET /api/me requires verified identity and returns only the app profile', 
   });
 });
 
+test('persists the residential account class and preserves it on unrelated edits', async () => {
+  const { api } = setup();
+  const created = await result(await api.createHousehold(request('/api/households', {
+    method: 'POST', user: users.a, json: { name: 'Low usage', electricityProvider: 'MEA', residentialTariffClass: 'low_usage' },
+  })));
+  assert.equal(created.status, 201);
+  assert.equal(created.body.household.residentialTariffClass, 'low_usage');
+  const householdId = created.body.household.id;
+  const updated = await result(await api.updateHousehold(request(`/api/households/${householdId}`, {
+    method: 'PATCH', user: users.a, json: { name: 'Renamed' },
+  }), { householdId }));
+  assert.equal(updated.body.household.residentialTariffClass, 'low_usage');
+  const invalid = await result(await api.updateHousehold(request(`/api/households/${householdId}`, {
+    method: 'PATCH', user: users.a, json: { residentialTariffClass: 'tou' },
+  }), { householdId }));
+  assert.equal(invalid.status, 400);
+  const reset = await result(await api.updateHousehold(request(`/api/households/${householdId}`, {
+    method: 'PATCH', user: users.a, json: { residentialTariffClass: null },
+  }), { householdId }));
+  assert.equal(reset.status, 200);
+  assert.equal(reset.body.household.residentialTariffClass ?? null, null);
+});
+
 test('household creation is atomic, validates fields, and list is membership-scoped to active homes', async () => {
   const { api, db, sqlite } = setup();
   assert.equal((await result(await api.createHousehold(request('/api/households', {

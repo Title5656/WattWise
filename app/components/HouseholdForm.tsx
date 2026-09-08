@@ -9,6 +9,7 @@ import type { HouseholdMembership } from '@/lib/household-ui';
 import { registerUnsavedForm } from '@/lib/unsaved-forms';
 import { isThaiProvince, THAI_PROVINCES } from '@/lib/thai-provinces';
 import { HouseholdAccessState } from './HouseholdAccessState';
+import type { ResidentialTariffClass } from '@/lib/tariffs';
 
 export function HouseholdForm({ household, onSaved, onCancel }: {
   household?: HouseholdMembership;
@@ -18,12 +19,13 @@ export function HouseholdForm({ household, onSaved, onCancel }: {
   const [name, setName] = useState(household?.name ?? '');
   const [province, setProvince] = useState(household?.province ?? '');
   const [provider, setProvider] = useState(household?.electricityProvider ?? '');
+  const [tariffClass, setTariffClass] = useState<ResidentialTariffClass | ''>(household?.residentialTariffClass ?? '');
   const [mutation] = useState(() => household
     ? createHouseholdEditLifecycle(fetch, household.id)
     : createHouseholdCreationLifecycle(fetch));
   const [state, setState] = useState(() => mutation.getState());
   const releaseDirty = useRef<() => void>(() => {});
-  const dirty = name !== (household?.name ?? '') || province !== (household?.province ?? '') || provider !== (household?.electricityProvider ?? '');
+  const dirty = name !== (household?.name ?? '') || province !== (household?.province ?? '') || provider !== (household?.electricityProvider ?? '') || tariffClass !== (household?.residentialTariffClass ?? '');
   const saving = state.phase === 'submitting';
   const legacyProvider = household?.electricityProvider;
   const validProvince = !province || isThaiProvince(province);
@@ -42,7 +44,7 @@ export function HouseholdForm({ household, onSaved, onCancel }: {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim() || !validProvince) return;
-    await mutation.submit({ name: name.trim(), province: province.trim() || null, electricityProvider: provider || null }, (saved) => {
+    await mutation.submit({ name: name.trim(), province: province.trim() || null, electricityProvider: provider || null, residentialTariffClass: tariffClass || null }, (saved) => {
       releaseDirty.current();
       onSaved(saved);
     });
@@ -63,7 +65,12 @@ export function HouseholdForm({ household, onSaved, onCancel }: {
         <option value="MEA">MEA · การไฟฟ้านครหลวง</option>
         {legacyProvider && !['PEA', 'MEA'].includes(legacyProvider) && <option value={legacyProvider}>{legacyProvider} · ข้อมูลเดิม</option>}
       </select></label>
-      <p className="account-muted">ผู้ให้บริการเป็นข้อมูลของบ้าน การประมาณค่าไฟใช้สูตรบ้านอยู่อาศัยเดิม</p>
+      <label>ประเภทค่าไฟตามบิล<select value={tariffClass} onChange={(event) => setTariffClass(event.target.value as ResidentialTariffClass | '')}>
+        <option value="">ยังไม่ทราบ · ประมาณด้วยอัตราบ้านทั่วไป</option>
+        <option value="low_usage">บ้านใช้ไฟน้อย · {provider === 'PEA' ? 'PEA 1.1.1' : provider === 'MEA' ? 'MEA 1.1' : 'PEA 1.1.1 / MEA 1.1'} · ค่าบริการ 8.19 บาท</option>
+        <option value="standard">บ้านทั่วไป · {provider === 'PEA' ? 'PEA 1.1.2' : provider === 'MEA' ? 'MEA 1.2' : 'PEA 1.1.2 / MEA 1.2'} · ค่าบริการ 24.62 บาท</option>
+      </select></label>
+      <p className="account-muted">เลือกตามประเภทในบิล การไฟฟ้าพิจารณาขนาดมิเตอร์และประวัติการใช้ไฟ ไม่ใช่จำนวนหน่วยเดือนเดียว รองรับอัตราปกติ ไม่รวม TOU สิทธิค่าไฟฟรีและส่วนลดเฉพาะราย</p>
     </fieldset>
     {state.error && <p className="account-error" role="alert">{state.error}</p>}
     <div className="account-actions">

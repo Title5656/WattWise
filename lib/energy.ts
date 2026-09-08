@@ -218,7 +218,7 @@ export function calculateElectricityBill(totalKwh: number, tariff: TariffInput):
     ? roundMoney(clamp(finiteNumber(tariff.serviceCharge) ?? 0, 0))
     : 0;
   const ftCharge = tariff.mode === 'tiered_tariff'
-    ? roundMoney(usage * clamp(finiteNumber(tariff.ftRatePerKwh) ?? 0, 0))
+    ? roundMoney(usage * (finiteNumber(tariff.ftRatePerKwh) ?? 0))
     : 0;
   const subtotal = roundMoney(energyCharge + serviceCharge + ftCharge);
   const vat = tariff.mode === 'tiered_tariff'

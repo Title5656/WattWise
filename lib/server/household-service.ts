@@ -36,6 +36,7 @@ import {
   updateMemberRole,
 } from './membership-repository.ts';
 import type { AuthenticatedUser } from './current-user.ts';
+import type { ResidentialTariffClass } from '../tariffs.ts';
 
 const NAME_MAX = 100;
 const PROVINCE_MAX = 100;
@@ -71,6 +72,7 @@ export function createHouseholdService(options: HouseholdServiceOptions = {}) {
           name: input.name,
           province: input.province,
           electricityProvider: input.electricityProvider,
+          residentialTariffClass: input.residentialTariffClass,
           now: timestamp,
         });
       } catch (error) {
@@ -306,19 +308,27 @@ function householdCreateInput(body: unknown) {
     name: requiredText(record.name, 'name', NAME_MAX),
     province: optionalText(record.province, 'province', PROVINCE_MAX),
     electricityProvider: optionalText(record.electricityProvider, 'electricityProvider', PROVIDER_MAX),
+    ...(Object.hasOwn(record, 'residentialTariffClass')
+      ? { residentialTariffClass: tariffClassInput(record.residentialTariffClass) } : {}),
   };
 }
 
 function householdPatchInput(body: unknown) {
   const record = objectBody(body);
-  const patch: { name?: string; province?: string | null; electricityProvider?: string | null } = {};
+  const patch: { name?: string; province?: string | null; electricityProvider?: string | null; residentialTariffClass?: ResidentialTariffClass | null } = {};
   if (Object.hasOwn(record, 'name')) patch.name = requiredText(record.name, 'name', NAME_MAX);
   if (Object.hasOwn(record, 'province')) patch.province = optionalText(record.province, 'province', PROVINCE_MAX);
   if (Object.hasOwn(record, 'electricityProvider')) {
     patch.electricityProvider = optionalText(record.electricityProvider, 'electricityProvider', PROVIDER_MAX);
   }
+  if (Object.hasOwn(record, 'residentialTariffClass')) patch.residentialTariffClass = tariffClassInput(record.residentialTariffClass);
   if (Object.keys(patch).length === 0) throw new ValidationError('At least one household field is required.');
   return patch;
+}
+
+function tariffClassInput(value: unknown): ResidentialTariffClass | null {
+  if (value === null || value === 'low_usage' || value === 'standard') return value;
+  throw new ValidationError('residentialTariffClass must be low_usage, standard, or null.');
 }
 
 function invitationInput(body: unknown): { email: string; role: InvitationRole } {

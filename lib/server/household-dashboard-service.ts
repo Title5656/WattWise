@@ -16,7 +16,7 @@ export function createHouseholdDashboardService(options: HouseholdDashboardServi
         household: snapshot.household,
         revision: snapshot.revision,
         items: snapshot.items,
-        summary: calculateHomeSummary(snapshot.items, new Date(now())),
+        summary: calculateHomeSummary(snapshot.items, new Date(now()), snapshot.household),
         history: selectRecentRecords(snapshot.history),
       };
     },

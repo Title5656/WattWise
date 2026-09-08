@@ -7,7 +7,7 @@ import {
   type EnergyCalculationResult,
   type ElectricityBillResult,
 } from './energy.ts';
-import { getResidentialTariff } from './tariffs.ts';
+import { getResidentialTariff, type ResidentialTariffOptions } from './tariffs.ts';
 import { getUsageProfile, resolveProfileEnergyInput, type UsageProfileId } from './usage-profiles.ts';
 import {
   createDefaultUsageSchedule,
@@ -190,8 +190,8 @@ export function calculateDailyLoadProfile(items: HomeAppliance[]): number[] {
   return values;
 }
 
-export function calculateHomeSummary(items: HomeAppliance[], billingDate = new Date()): HomeSummary {
-  const tariff = getResidentialTariff(billingDate);
+export function calculateHomeSummary(items: HomeAppliance[], billingDate = new Date(), tariffOptions: ResidentialTariffOptions = {}): HomeSummary {
+  const tariff = getResidentialTariff(billingDate, tariffOptions);
   const estimate = calculateHouseholdEstimate(items.map((item) => ({
     key: item.instanceId,
     ...resolveEnergyInput(item),

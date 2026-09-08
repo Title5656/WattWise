@@ -1,5 +1,11 @@
 import type { CalculationNotice, TariffTier, TieredTariff } from './energy.ts';
 
+export type ResidentialTariffClass = 'low_usage' | 'standard';
+export type ResidentialTariffOptions = {
+  electricityProvider?: string | null;
+  residentialTariffClass?: ResidentialTariffClass | null;
+};
+
 export type ResidentialTariff = TieredTariff & {
   id: string;
   effectiveFrom: string;
@@ -11,6 +17,25 @@ export type ResidentialTariff = TieredTariff & {
 
 const PEA_TARIFF_SOURCE = 'https://www.pea.co.th/our-services/tariff';
 const ERC_TARIFF_SOURCE = 'https://www.erc.or.th/th/news-release/3472';
+
+// PEA 1.1.1 / MEA 1.1. Account classification depends on the registered meter
+// and consumption history, not this month's estimated kWh alone.
+const legacyLowUsageTiers: TariffTier[] = [
+  { fromKwh: 0, toKwh: 15, ratePerKwh: 2.3488 },
+  { fromKwh: 15, toKwh: 25, ratePerKwh: 2.9882 },
+  { fromKwh: 25, toKwh: 35, ratePerKwh: 3.2405 },
+  { fromKwh: 35, toKwh: 100, ratePerKwh: 3.6237 },
+  { fromKwh: 100, toKwh: 150, ratePerKwh: 3.7171 },
+  { fromKwh: 150, toKwh: 400, ratePerKwh: 4.2218 },
+  { fromKwh: 400, toKwh: null, ratePerKwh: 4.4217 },
+];
+
+const progressiveLowUsageTiers: TariffTier[] = [
+  ...legacyLowUsageTiers.slice(0, 2),
+  { fromKwh: 25, toKwh: 200, ratePerKwh: 3 },
+  { fromKwh: 200, toKwh: 400, ratePerKwh: 4.1584 },
+  { fromKwh: 400, toKwh: null, ratePerKwh: 4.3583 },
+];
 
 const legacyTiers: TariffTier[] = [
   { fromKwh: 0, toKwh: 150, ratePerKwh: 3.2484 },
@@ -78,7 +103,7 @@ function dateKey(value: Date) {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-export function getResidentialTariff(billingDate = new Date()): ResidentialTariff {
+function selectResidentialPeriod(billingDate: Date): ResidentialTariff {
   const requestedDate = dateKey(billingDate);
   const current = tariffRecords.find((record) => requestedDate >= record.effectiveFrom
     && (record.effectiveTo === null || requestedDate <= record.effectiveTo));
@@ -99,5 +124,34 @@ export function getResidentialTariff(billingDate = new Date()): ResidentialTarif
     ...fallback,
     status: 'latest_known',
     warnings: [{ code: warningCode, message: warningMessage }],
+  };
+}
+
+export function getResidentialTariff(billingDate = new Date(), options: ResidentialTariffOptions = {}): ResidentialTariff {
+  const period = selectResidentialPeriod(billingDate);
+  const lowUsage = options.residentialTariffClass === 'low_usage';
+  const provider = options.electricityProvider === 'PEA' || options.electricityProvider === 'MEA'
+    ? options.electricityProvider : 'PEA / MEA';
+  const account = lowUsage
+    ? provider === 'PEA' ? '1.1.1' : provider === 'MEA' ? '1.1' : '1.1.1 / 1.1'
+    : provider === 'PEA' ? '1.1.2' : provider === 'MEA' ? '1.2' : '1.1.2 / 1.2';
+  const warnings = [...period.warnings];
+  if (!options.residentialTariffClass) warnings.push({
+    code: 'tariff_class_assumed',
+    message: 'ยังไม่ระบุประเภทตามบิล จึงประมาณด้วยอัตราบ้านทั่วไป ค่าบริการ 24.62 บาท เลือกประเภทให้ตรงกับบิลในข้อมูลบ้าน',
+  });
+  if (lowUsage) warnings.push({
+    code: 'tariff_assistance_not_applied',
+    message: 'ยอดก่อนสิทธิค่าไฟฟรีและส่วนลดเฉพาะราย ซึ่งต้องตรวจสอบคุณสมบัติกับการไฟฟ้า',
+  });
+  return {
+    ...period,
+    id: lowUsage ? `${period.id}-low-usage` : period.id,
+    label: `${provider} · อัตรา ${account} · ${period.label}`,
+    tiers: (lowUsage
+      ? period.effectiveFrom >= '2026-09-01' ? progressiveLowUsageTiers : legacyLowUsageTiers
+      : period.tiers).map((tier) => ({ ...tier })),
+    serviceCharge: lowUsage ? 8.19 : 24.62,
+    warnings,
   };
 }

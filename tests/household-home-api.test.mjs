@@ -75,6 +75,20 @@ function validItem(instanceId = 'fan-main', overrides = {}) {
   };
 }
 
+test('saving and reloading home uses the saved low-use tariff, including monthly history', async () => {
+  const { api, sqlite } = setup();
+  sqlite.exec("UPDATE households SET residential_tariff_class = 'low_usage', electricity_provider = 'PEA' WHERE id = 10");
+  const saved = await json(await api.PUT(request('/api/households/hh_alpha/home', {
+    method: 'PUT', json: { expectedRevision: 0, items: [validItem('tariff-fan')] },
+  }), { householdId: 'hh_alpha' }));
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.summary.bill.serviceCharge, 8.19);
+  assert.match(saved.body.summary.bill.tariffLabel, /PEA.*1\.1\.1/);
+  const read = await json(await api.GET(request('/api/households/hh_alpha/home'), { householdId: 'hh_alpha' }));
+  assert.equal(read.body.summary.monthlyBill, saved.body.summary.monthlyBill);
+  assert.equal(read.body.history.at(-1).estimatedBill, saved.body.summary.monthlyBill);
+});
+
 async function json(response) {
   return { status: response.status, body: await response.json() };
 }

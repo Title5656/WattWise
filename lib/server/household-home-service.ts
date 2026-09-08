@@ -14,6 +14,7 @@ import {
 } from './household-home-repository.ts';
 import type { AuthenticatedUser } from './current-user.ts';
 import { InternalServerError } from './http-errors.ts';
+import type { ResidentialTariffOptions } from '../tariffs.ts';
 
 const EDIT_ROLES = ['owner', 'admin', 'member'] as const;
 const MAX_HOME_ITEMS = 100;
@@ -150,12 +151,13 @@ async function responseBody(
   items: HomeAppliance[],
   history: Awaited<ReturnType<typeof readHouseholdHomeSnapshot>>['history'],
   now: number,
+  tariffOptions: ResidentialTariffOptions,
 ) {
   return {
     householdId: householdPublicId,
     revision,
     items,
-    summary: calculateHomeSummary(items, new Date(now)),
+    summary: calculateHomeSummary(items, new Date(now), tariffOptions),
     history: selectRecentRecords(history),
   };
 }
@@ -166,7 +168,7 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
     async get(db: D1Database, user: AuthenticatedUser, householdPublicId: string) {
       const timestamp = now();
       const snapshot = await readHouseholdHomeSnapshot(db, user.userId, householdPublicId);
-      return responseBody(householdPublicId, snapshot.revision, snapshot.items, snapshot.history, timestamp);
+      return responseBody(householdPublicId, snapshot.revision, snapshot.items, snapshot.history, timestamp, snapshot.household);
     },
 
     async put(db: D1Database, user: AuthenticatedUser, householdPublicId: string, request: Request) {
@@ -183,7 +185,7 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
       }
       const validated = await validateHomeBody(db, validationState.existingItems, raw);
       const timestamp = now();
-      const summary = calculateHomeSummary(validated.homeItems, new Date(timestamp));
+      const summary = calculateHomeSummary(validated.homeItems, new Date(timestamp), validationState.tariffOptions);
       let result: Awaited<ReturnType<typeof replaceHouseholdHome>>;
       try {
         result = await replaceHouseholdHome(db, {
@@ -217,6 +219,7 @@ export function createHouseholdHomeService(options: HouseholdHomeServiceOptions 
         validated.homeItems,
         result.history,
         timestamp,
+        validationState.tariffOptions,
       );
     },
   };
