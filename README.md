@@ -120,7 +120,6 @@ docs/                เอกสารด้านข้อมูล การ�
 ## เอกสารที่เกี่ยวข้อง
 
 - [`PROJECT_SPEC.md`](./PROJECT_SPEC.md) — วิสัยทัศน์ ขอบเขต และ acceptance criteria
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — workflow สำหรับพัฒนาและส่ง Pull Request
 - [`docs/catalog.md`](./docs/catalog.md) — ที่มาของ catalog และสัญญา Catalog API
 - [`docs/multi-user-cutover.md`](./docs/multi-user-cutover.md) — ขั้นตอนย้ายข้อมูลเดิมเข้าสู่ระบบหลายผู้ใช้
 - [`docs/ui-redesign-qa.md`](./docs/ui-redesign-qa.md) — checklist สำหรับตรวจสอบ UI
@@ -128,5 +127,3 @@ docs/                เอกสารด้านข้อมูล การ�
 ## สถานะโปรเจกต์
 
 ฟีเจอร์หลักสำหรับ catalog, การสร้างบ้านจำลอง, dashboard, การคำนวณพลังงาน และการจัดการ household มีโครงสร้างพร้อมใช้งานแล้ว โดยระบบยังอยู่ระหว่างการพัฒนาต่อในส่วนของข้อมูล tariff, scenario comparison และคำแนะนำประหยัดไฟ
-
-หากพบปัญหาหรือมีไอเดียเพิ่มเติม สามารถเปิด Issue หรืออ่านแนวทางการมีส่วนร่วมได้ที่ [`CONTRIBUTING.md`](./CONTRIBUTING.md)
